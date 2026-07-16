@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { sb, FN_BASE } from "../../../lib/supabase";
-import { Shell, I, bandCls, GROUP_META, GROUP_BAR } from "../../ui";
+import { Shell, I, bandCls, GROUP_META, GROUP_BAR, groupName } from "../../ui";
 
 function randToken() {
   const b = new Uint8Array(8);
@@ -46,6 +46,7 @@ export default function Campaign() {
   const [qr, setQr] = useState(null);
   const [uniqGroup, setUniqGroup] = useState("");
   const [uniqCount, setUniqCount] = useState("5");
+  const [addName, setAddName] = useState(null);
 
   const load = useCallback(async () => {
     const { data: u } = await sb().auth.getUser();
@@ -126,6 +127,18 @@ export default function Campaign() {
     const { error } = await sb().from("fs_links").insert({ campaign_id: id, group_id: groupId, token: randToken(), mode: "group" });
     setBusy(false);
     if (error) setErr(error.message); else load();
+  }
+  async function addGroup() {
+    const name = (addName || "").trim();
+    if (!name) { setAddName(null); return; }
+    setBusy(true);
+    const { data: g, error } = await sb().from("fs_groups")
+      .insert({ campaign_id: id, type: "other", label: name, target_n: 5 }).select("id").single();
+    if (!error && g) {
+      await sb().from("fs_links").insert({ campaign_id: id, group_id: g.id, token: randToken(), mode: "group" });
+    }
+    if (error) setErr(error.message);
+    setAddName(null); setBusy(false); load();
   }
   async function generateUnique() {
     const n = Math.min(50, Math.max(1, Number(uniqCount || 5)));
@@ -231,7 +244,7 @@ export default function Campaign() {
                   <td>
                     <div className="gname">
                       <span className={"chip " + meta.chip}><Icon /></span>
-                      <span><div className="nm">{meta.label}</div><div className="sub">{g.label}</div></span>
+                      <span><div className="nm">{groupName(g)}</div>{groupName(g) !== g.label ? <div className="sub">{g.label}</div> : null}</span>
                     </div>
                   </td>
                   <td>{l ? <span className="pill open">Active</span> : <span className="pill closed">No link</span>}</td>
@@ -275,6 +288,23 @@ export default function Campaign() {
             })}
           </tbody>
         </table>
+        {canManage ? (
+          <div style={{ marginTop: 12 }}>
+            {addName === null ? (
+              <button className="btn btn-ghost btn-sm" onClick={() => setAddName("")}>+ Add stakeholder group</button>
+            ) : (
+              <span style={{ display: "flex", gap: 8, maxWidth: 480 }}>
+                <input type="text" value={addName} onChange={(e) => setAddName(e.target.value)}
+                  placeholder="Type the stakeholder name, e.g. Board members" autoFocus />
+                <button className="btn btn-primary btn-sm" disabled={busy} onClick={addGroup}>Add</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setAddName(null)}>Cancel</button>
+              </span>
+            )}
+            <div className="small muted" style={{ marginTop: 6 }}>
+              Custom groups answer the outward-facing question set and get their own signed link immediately.
+            </div>
+          </div>
+        ) : null}
         {qr ? (
           <div style={{ marginTop: 14, textAlign: "center", padding: 16, border: "1px solid var(--line)", borderRadius: 12 }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -312,7 +342,7 @@ export default function Campaign() {
           </p>
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
             <select value={uniqGroup} onChange={(e) => setUniqGroup(e.target.value)} style={{ width: "auto" }}>
-              {groups.map((g) => <option key={g.id} value={g.id}>{GROUP_META[g.type]?.label || g.type}</option>)}
+              {groups.map((g) => <option key={g.id} value={g.id}>{groupName(g)}</option>)}
             </select>
             <input type="text" inputMode="numeric" value={uniqCount}
               onChange={(e) => setUniqCount(e.target.value.replace(/\D/g, ""))} style={{ width: 70 }} />
@@ -326,7 +356,7 @@ export default function Campaign() {
                   const used = l.used_count >= (l.max_uses || 1) || !l.active;
                   return (
                     <tr key={l.id}>
-                      <td className="small">{GROUP_META[groupById[l.group_id]?.type]?.label || "—"}</td>
+                      <td className="small">{groupName(groupById[l.group_id]) || "—"}</td>
                       <td><span className="codebox">/respond/{l.token}</span></td>
                       <td><span className={"pill " + (used ? "closed" : "open")}>{used ? "used" : "unused"}</span></td>
                       <td style={{ textAlign: "right" }}>{!used ? (
@@ -358,7 +388,7 @@ export default function Campaign() {
               <tbody>
                 {(results.groups || []).map((g) => (
                   <tr key={g.id}>
-                    <td><b>{GROUP_META[g.type]?.label || g.type}</b></td>
+                    <td><b>{groupName(g)}</b></td>
                     <td>{g.n}</td>
                     {g.suppressed ? (
                       <td colSpan={pillars.length + 1} className="muted small">
@@ -452,7 +482,7 @@ function GapsCard({ results }) {
     );
   }
   const rows = pillars.map((p) => {
-    const entries = visible.map((g) => ({ type: g.type, v: g.pillars?.[p.id] })).filter((e) => e.v != null);
+    const entries = visible.map((g) => ({ type: g.type, name: (g.type === "other" ? (g.label || "Other") : (undefined)) || undefined, v: g.pillars?.[p.id] })).filter((e) => e.v != null).map((e) => ({ ...e, name: e.name || ({executive:"Executives",employee:"Employees",customer:"Customers",partner:"Partners"}[e.type] || e.type) }));
     if (entries.length < 2) return { p, entries, spread: null };
     const hi = entries.reduce((a, b) => (b.v > a.v ? b : a));
     const lo = entries.reduce((a, b) => (b.v < a.v ? b : a));
@@ -475,7 +505,7 @@ function GapsCard({ results }) {
               <td>
                 {entries.map((e) => (
                   <span key={e.type} className="pill closed" style={{ marginRight: 6 }}>
-                    {GROUP_META[e.type]?.label || e.type}: <b>{e.v}</b>
+                    {e.name}: <b>{e.v}</b>
                   </span>
                 ))}
               </td>
@@ -483,7 +513,7 @@ function GapsCard({ results }) {
                 {spread === null ? "—" : (
                   <>
                     {spread}
-                    {spread >= 20 ? <span className="small" style={{ color: "var(--band-low)" }}> ▲ {GROUP_META[hi.type]?.label} vs {GROUP_META[lo.type]?.label}</span> : null}
+                    {spread >= 20 ? <span className="small" style={{ color: "var(--band-low)" }}> ▲ {hi.name} vs {lo.name}</span> : null}
                   </>
                 )}
               </td>
