@@ -57,8 +57,9 @@ export default function Campaign() {
     const { data: camp, error: e1 } = await sb().from("fs_campaigns")
       .select("id, org_id, name, status, opens_at, closes_at, anonymity_threshold, thankyou_message, closed_message").eq("id", id).maybeSingle();
     if (e1 || !camp) { setErr(e1 ? e1.message : "Campaign not found (or you don't have access)."); return; }
-    // F8: resolve the caller's role in THIS campaign's org, not an arbitrary membership
-    const { data: mem } = await sb().from("fs_memberships").select("role").eq("org_id", camp.org_id).maybeSingle();
+    // F8: resolve the caller's OWN role in THIS campaign's org
+    const { data: mem } = await sb().from("fs_memberships").select("role")
+      .eq("org_id", camp.org_id).eq("user_id", u.user.id).maybeSingle();
     setRole(mem?.role || "");
     setC(camp);
     setEditName(camp.name);
