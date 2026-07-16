@@ -3,7 +3,8 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { sb, FN_BASE } from "../../../lib/supabase";
-import { Shell, I, bandCls, GROUP_META, GROUP_BAR, groupName } from "../../ui";
+import { Shell, I, bandCls, bandWord, bandOf, GROUP_META, GROUP_BAR, groupName } from "../../ui";
+import { bestGaps, MIN_N } from "../../lib/gaps";
 
 function randToken() {
   const b = new Uint8Array(8);
@@ -52,11 +53,12 @@ export default function Campaign() {
     const { data: u } = await sb().auth.getUser();
     if (!u.user) { router.replace("/login"); return; }
     setUser(u.user);
-    const { data: mem } = await sb().from("fs_memberships").select("role").limit(1).maybeSingle();
-    setRole(mem?.role || "");
     const { data: camp, error: e1 } = await sb().from("fs_campaigns")
-      .select("id, name, status, opens_at, closes_at, anonymity_threshold, thankyou_message, closed_message").eq("id", id).maybeSingle();
+      .select("id, org_id, name, status, opens_at, closes_at, anonymity_threshold, thankyou_message, closed_message").eq("id", id).maybeSingle();
     if (e1 || !camp) { setErr(e1 ? e1.message : "Campaign not found (or you don't have access)."); return; }
+    // F8: resolve the caller's role in THIS campaign's org, not an arbitrary membership
+    const { data: mem } = await sb().from("fs_memberships").select("role").eq("org_id", camp.org_id).maybeSingle();
+    setRole(mem?.role || "");
     setC(camp);
     setEditName(camp.name);
     setEditThreshold(String(camp.anonymity_threshold));
@@ -74,7 +76,7 @@ export default function Campaign() {
     const jwt = sess.session?.access_token;
     if (jwt) {
       try {
-        const r = await fetch(`${FN_BASE}/fs-results?campaign_id=${id}`, { headers: { Authorization: `Bearer ${jwt}` } });
+        const r = await fetch(`${FN_BASE}/fs-results?campaign_id=${id}&detail=1`, { headers: { Authorization: `Bearer ${jwt}` } });
         if (r.ok) setResults(await r.json());
       } catch { /* best-effort */ }
     }
@@ -106,7 +108,7 @@ export default function Campaign() {
     setBusy(true); setSaved(false);
     const upd = {
       name: editName.trim() || c.name,
-      anonymity_threshold: Math.max(1, Number(editThreshold || 5)),
+      anonymity_threshold: Math.max(4, Number(editThreshold || 5)),
       thankyou_message: editThanks.trim() || null,
       closed_message: editClosedMsg.trim() || null,
     };
@@ -177,7 +179,7 @@ export default function Campaign() {
     for (const t of types) head.push(`${GROUP_META[t]?.label || t} mean`, `${GROUP_META[t]?.label || t} n`, `${GROUP_META[t]?.label || t} DK/NA`);
     const rows = [head];
     for (const q of d.questions || []) {
-      const row = [q.pillar, q.text];
+      const row = [q.pillar_short || q.pillar, q.text];
       for (const t of types) {
         const e = q.groups[t] || {};
         row.push(e.mean ?? "", e.n_scored ?? 0, e.n_dkna ?? 0);
@@ -439,7 +441,7 @@ export default function Campaign() {
             <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} />
             <div className="grid2">
               <div>
-                <label className="f">Anonymity threshold</label>
+                <label className="f">Anonymity threshold <span className="muted">(minimum 4)</span></label>
                 <input type="text" inputMode="numeric" value={editThreshold}
                   onChange={(e) => setEditThreshold(e.target.value.replace(/\D/g, ""))} />
               </div>
@@ -466,11 +468,12 @@ export default function Campaign() {
   );
 }
 
-/* ---------- Perception gaps ---------- */
+/* ---------- Perception gaps (shared questions only — audit F2/F7) ---------- */
 function GapsCard({ results }) {
   if (!results) return null;
   const pillars = results.pillars || [];
   const visible = (results.groups || []).filter((g) => !g.suppressed);
+  const nameOfType = (t) => groupName(visible.find((g) => g.type === t)) || t;
   if (visible.length < 2) {
     return (
       <div className="card">
@@ -481,39 +484,37 @@ function GapsCard({ results }) {
       </div>
     );
   }
-  const rows = pillars.map((p) => {
-    const entries = visible.map((g) => ({ type: g.type, name: (g.type === "other" ? (g.label || "Other") : (undefined)) || undefined, v: g.pillars?.[p.id] })).filter((e) => e.v != null).map((e) => ({ ...e, name: e.name || ({executive:"Executives",employee:"Employees",customer:"Customers",partner:"Partners"}[e.type] || e.type) }));
-    if (entries.length < 2) return { p, entries, spread: null };
-    const hi = entries.reduce((a, b) => (b.v > a.v ? b : a));
-    const lo = entries.reduce((a, b) => (b.v < a.v ? b : a));
-    return { p, entries, spread: Math.round((hi.v - lo.v) * 10) / 10, hi, lo };
-  });
-  const maxSpread = Math.max(...rows.map((r) => r.spread ?? 0));
+  const gapMap = bestGaps(results.questions, pillars, visible);
+  const rows = pillars.map((p) => ({ p, e: gapMap[p.id] || null }));
+  const maxSpread = Math.max(0, ...rows.map((r) => r.e?.d ?? 0));
+  const smallGroups = visible.filter((g) => g.n < MIN_N);
   return (
     <div className="card">
       <h2>Stakeholder perception gaps</h2>
       <p className="muted small">
-        The spread between the highest- and lowest-scoring group on each pillar.
-        Big spreads matter more than the average.
+        The widest gap between any two groups on each pillar, measured only on the
+        questions both groups answered — so it reflects perception, not questionnaire design.
       </p>
       <table className="t">
-        <thead><tr><th>Pillar</th><th>Group scores</th><th>Spread</th></tr></thead>
+        <thead><tr><th>Pillar</th><th>Widest gap</th><th>Shared Qs</th><th>Spread</th></tr></thead>
         <tbody>
-          {rows.map(({ p, entries, spread, hi, lo }) => (
-            <tr key={p.id} style={spread !== null && spread === maxSpread && spread >= 15 ? { background: "#fff8ef" } : undefined}>
+          {rows.map(({ p, e }) => (
+            <tr key={p.id} style={e && e.d === maxSpread && e.d >= 15 ? { background: "#fff8ef" } : undefined}>
               <td><b>{p.short}</b></td>
               <td>
-                {entries.map((e) => (
-                  <span key={e.type} className="pill closed" style={{ marginRight: 6 }}>
-                    {e.name}: <b>{e.v}</b>
-                  </span>
-                ))}
-              </td>
-              <td className="score">
-                {spread === null ? "—" : (
+                {e ? (
                   <>
-                    {spread}
-                    {spread >= 20 ? <span className="small" style={{ color: "var(--band-low)" }}> ▲ {hi.name} vs {lo.name}</span> : null}
+                    <span className="pill closed" style={{ marginRight: 6 }}>{nameOfType(e.hiType)}: <b>{e.hi}</b></span>
+                    <span className="pill closed">{nameOfType(e.loType)}: <b>{e.lo}</b></span>
+                  </>
+                ) : <span className="small muted">not enough shared questions</span>}
+              </td>
+              <td className="small muted">{e ? e.items : "—"}</td>
+              <td className="score">
+                {!e ? "—" : (
+                  <>
+                    {e.d}
+                    {e.d >= 20 ? <span className="small" style={{ color: "var(--band-low)" }}> ▲ {nameOfType(e.hiType)} vs {nameOfType(e.loType)}</span> : null}
                   </>
                 )}
               </td>
@@ -521,13 +522,17 @@ function GapsCard({ results }) {
           ))}
         </tbody>
       </table>
+      {smallGroups.length ? (
+        <p className="small muted" style={{ marginTop: 8 }}>
+          ⚠ Small samples ({smallGroups.map((g) => `${groupName(g)} n=${g.n}`).join(", ")}) — treat
+          gaps as indicative until groups reach {MIN_N}+ responses.
+        </p>
+      ) : null}
     </div>
   );
 }
 
-/* ---------- Recommended interventions (engine v0) ---------- */
-function bandOf(v) { return v < 40 ? "low" : v < 70 ? "medium" : "high"; }
-
+/* ---------- Recommended interventions (engine v1 — any pair, either direction) ---------- */
 function InterventionsCard({ results, library }) {
   if (!results) return null;
   const pillars = results.pillars || [];
@@ -540,16 +545,16 @@ function InterventionsCard({ results, library }) {
       </div>
     );
   }
-  const byGroup = {};
-  for (const g of results.groups || []) if (!g.suppressed) byGroup[g.type] = g;
+  const visible = (results.groups || []).filter((g) => !g.suppressed);
+  const nameOfType = (t) => groupName(visible.find((g) => g.type === t)) || t;
+  const gapMap = bestGaps(results.questions, pillars, visible);
 
   const picks = [];
   for (const p of pillars) {
-    const ex = byGroup.executive?.pillars?.[p.id];
-    const em = byGroup.employee?.pillars?.[p.id];
-    if (ex !== null && ex !== undefined && em !== null && em !== undefined) {
-      const gapEntry = library.find((e) => e.trigger_type === "gap" && e.pillar === p.id && ex - em >= Number(e.gap_min || 20));
-      if (gapEntry) picks.push({ entry: gapEntry, p, why: `Executives ${ex} vs employees ${em} (gap ${Math.round((ex - em) * 10) / 10})` });
+    const gp = gapMap[p.id];
+    if (gp) {
+      const gapEntry = library.find((e) => e.trigger_type === "gap" && e.pillar === p.id && gp.d >= Number(e.gap_min || 20));
+      if (gapEntry) picks.push({ entry: gapEntry, p, why: `${nameOfType(gp.hiType)} ${gp.hi} vs ${nameOfType(gp.loType)} ${gp.lo} (gap ${gp.d}, ${gp.items} shared Qs)` });
     }
   }
   const ranked = pillars
