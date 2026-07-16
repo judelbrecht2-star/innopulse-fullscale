@@ -29,6 +29,8 @@ export default function NewCampaign() {
   const [groups, setGroups] = useState(
     Object.fromEntries(GROUP_DEFS.map((g) => [g.type, { on: !g.off, target: g.def, label: g.label }]))
   );
+  const [versions, setVersions] = useState([]);
+  const [verId, setVerId] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -40,6 +42,11 @@ export default function NewCampaign() {
       const { data: mem } = await sb().from("fs_memberships")
         .select("role, org_id, fs_orgs(id, name)").limit(1).maybeSingle();
       if (mem) { setOrg(mem.fs_orgs); setRole(mem.role); }
+      // F3: campaigns choose their questionnaire version — no more hardcoded v1.0
+      const { data: vs } = await sb().from("fs_questionnaire_versions")
+        .select("id, version").order("created_at", { ascending: false });
+      setVersions(vs || []);
+      if (vs && vs.length) setVerId(vs[0].id);
     })();
   }, [router]);
 
@@ -51,18 +58,16 @@ export default function NewCampaign() {
     const chosen = GROUP_DEFS.filter((g) => groups[g.type].on);
     if (!name.trim()) { setErr("Give the campaign a name."); return; }
     if (chosen.length === 0) { setErr("Choose at least one stakeholder group."); return; }
+    if (!verId) { setErr("Choose a questionnaire version."); return; }
     setBusy(true);
     try {
-      const { data: qv, error: eq } = await sb()
-        .from("fs_questionnaire_versions").select("id").eq("version", "1.0").single();
-      if (eq || !qv) throw new Error("Questionnaire version not found.");
       const opens = new Date();
       const closes = new Date(Date.now() + Number(days || 30) * 86400000);
       const { data: camp, error: e1 } = await sb().from("fs_campaigns").insert({
         org_id: org.id, name: name.trim(), status: "open",
-        questionnaire_version_id: qv.id,
+        questionnaire_version_id: verId,
         opens_at: opens.toISOString(), closes_at: closes.toISOString(),
-        anonymity_threshold: Math.max(1, Number(threshold || 5)),
+        anonymity_threshold: Math.max(4, Number(threshold || 5)),
         created_by: user.id,
       }).select("id").single();
       if (e1 || !camp) throw new Error(e1 ? e1.message : "Could not create campaign.");
@@ -122,7 +127,21 @@ export default function NewCampaign() {
             </div>
             <p className="small muted" style={{ marginTop: 8 }}>
               Groups below the threshold are hidden in results to protect respondents.
-              Recommended: 5.
+              Minimum 4 — recommended 5. This floor is also enforced server-side.
+            </p>
+            <label className="f" style={{ marginTop: 10 }}>Questionnaire</label>
+            <select value={verId} onChange={(e) => setVerId(e.target.value)}>
+              {versions.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.version.includes("draft")
+                    ? `v${v.version.replace("-draft", "")} — stakeholder-tailored (draft, awaiting sign-off)`
+                    : `v${v.version} — classic (same 50 questions for every group)`}
+                </option>
+              ))}
+            </select>
+            <p className="small muted" style={{ marginTop: 6 }}>
+              The tailored version serves each stakeholder group only the questions written
+              for them; the classic version shows everyone the same set.
             </p>
           </div>
 
