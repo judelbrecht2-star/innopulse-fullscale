@@ -186,7 +186,7 @@ export default function Report() {
             {findings.map((f) => (
               <div key={f.id} style={{ borderTop: "1px solid var(--line)", padding: "10px 0" }}>
                 <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 14 }}>
-                  {f.title} <span className="muted small">({f.klass} · confidence {f.confidence})</span>
+                  {f.title} <span className="muted small">({f.klass} · confidence {f.confidence}{f.iso ? ` · ISO 56001 ${f.iso}` : ""})</span>
                 </p>
                 <p className="small" style={{ margin: "0 0 4px", lineHeight: 1.55 }}>{f.text}</p>
                 <p className="small muted" style={{ margin: "0 0 4px" }}>{f.evidence.join("  ")}</p>
