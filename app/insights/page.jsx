@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { sb, FN_BASE } from "../../lib/supabase";
-import { Shell, I, GROUP_META, GROUP_BAR } from "../ui";
+import { Shell, I, GROUP_META, GROUP_BAR, groupName } from "../ui";
 
 function bandWord(v) { return v < 40 ? "Medium" && (v < 40 ? "Low" : "Medium") : v < 70 ? "Medium" : "High"; }
 function bandChip(v) { return v == null ? "" : v < 40 ? "low" : v < 70 ? "med" : "high"; }
@@ -52,6 +52,7 @@ export default function Insights() {
   const overall = results?.overall && !results.overall.suppressed ? results.overall : null;
   const totalN = groups.reduce((s, g) => s + (g.n || 0), 0);
   const presentTypes = groups.map((g) => g.type);
+  const nameOfType = (t) => groupName(groups.find((g) => g.type === t)) || GROUP_META[t]?.label || t;
   const visByType = Object.fromEntries(visible.map((g) => [g.type, g]));
 
   // ensure selectors point at present groups
@@ -105,7 +106,7 @@ export default function Insights() {
         <div className="stat"><span className="ic c-red"><I.info /></span><div>
           <div className="k">Largest perception gap</div>
           <div className="v">{biggest && biggest.d != null ? `${biggest.d} pts` : "—"}</div>
-          {biggest && biggest.d != null ? <span className="small muted">{biggest.p.short} · {GROUP_META[gA]?.label} vs {GROUP_META[gB]?.label}</span> : <span className="small muted">needs two visible groups</span>}
+          {biggest && biggest.d != null ? <span className="small muted">{biggest.p.short} · {nameOfType(gA)} vs {nameOfType(gB)}</span> : <span className="small muted">needs two visible groups</span>}
         </div></div>
       </div>
 
@@ -116,23 +117,23 @@ export default function Insights() {
             <h2 style={{ margin: 0 }}>Stakeholder perception gap</h2>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <select value={gA} onChange={(e) => setGA(e.target.value)} style={{ width: "auto", fontSize: 13 }}>
-                {presentTypes.map((t) => <option key={t} value={t} disabled={t === gB}>{GROUP_META[t]?.label || t}</option>)}
+                {presentTypes.map((t) => <option key={t} value={t} disabled={t === gB}>{nameOfType(t)}</option>)}
               </select>
               <span className="small muted">vs</span>
               <select value={gB} onChange={(e) => setGB(e.target.value)} style={{ width: "auto", fontSize: 13 }}>
-                {presentTypes.map((t) => <option key={t} value={t} disabled={t === gA}>{GROUP_META[t]?.label || t}</option>)}
+                {presentTypes.map((t) => <option key={t} value={t} disabled={t === gA}>{nameOfType(t)}</option>)}
               </select>
             </div>
           </div>
           <p className="small" style={{ margin: "8px 0 12px" }}>
-            <span className="legend-dot" style={{ background: GROUP_BAR[gA] }} />{GROUP_META[gA]?.label}
-            <span className="legend-dot" style={{ background: GROUP_BAR[gB], marginLeft: 16 }} />{GROUP_META[gB]?.label}
+            <span className="legend-dot" style={{ background: GROUP_BAR[gA] }} />{nameOfType(gA)}
+            <span className="legend-dot" style={{ background: GROUP_BAR[gB], marginLeft: 16 }} />{nameOfType(gB)}
             <span className="muted" style={{ marginLeft: 16 }}>Δ = point difference per pillar</span>
           </p>
           {!A || !B ? (
             <p className="muted small">
-              Both selected groups need enough responses to show. {A ? "" : `${GROUP_META[gA]?.label} is still below the anonymity threshold. `}
-              {B ? "" : `${GROUP_META[gB]?.label} is still below the anonymity threshold.`}
+              Both selected groups need enough responses to show. {A ? "" : `${nameOfType(gA)} is still below the anonymity threshold. `}
+              {B ? "" : `${nameOfType(gB)} is still below the anonymity threshold.`}
             </p>
           ) : (
             <>
@@ -198,7 +199,7 @@ export default function Insights() {
               const Icon = I[meta.icon] || I.people;
               return (
                 <tr key={g.id}>
-                  <td><div className="gname"><span className={"chip " + meta.chip} style={{ width: 36, height: 36, flex: "0 0 36px" }}><Icon style={{ width: 17, height: 17 }} /></span><b>{meta.label}</b></div></td>
+                  <td><div className="gname"><span className={"chip " + meta.chip} style={{ width: 36, height: 36, flex: "0 0 36px" }}><Icon style={{ width: 17, height: 17 }} /></span><b>{groupName(g)}</b></div></td>
                   <td>{g.n}</td>
                   {g.suppressed ? (
                     <td colSpan={pillars.length + 1}>
