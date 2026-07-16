@@ -43,7 +43,12 @@ export default function Dashboard() {
       <p className="muted small">Your role: <b>{role || "—"}</b></p>
       {err ? <div className="err">{err}</div> : null}
       <div className="card">
-        <h2>Assessment campaigns</h2>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <h2 style={{ margin: 0 }}>Assessment campaigns</h2>
+          {role === "owner" || role === "manager" ? (
+            <Link className="btn btn-primary btn-sm" href="/campaigns/new">+ New campaign</Link>
+          ) : null}
+        </div>
         {campaigns.length === 0 ? (
           <p className="muted">No campaigns yet.</p>
         ) : (
@@ -66,8 +71,8 @@ export default function Dashboard() {
         )}
       </div>
       <p className="small muted">
-        Campaign creation UI lands in the next iteration — this preview ships with a
-        seeded demo campaign so you can walk the full flow today.
+        Create a campaign, share each stakeholder group&apos;s link, and results
+        aggregate live with anonymity protection.
       </p>
     </>
   );
