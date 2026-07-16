@@ -45,6 +45,36 @@ function ctx(results) {
   return { qs, vis, allGroups: results.groups || [], m, sd, dk, gapEE, avg, dkAvg, cite };
 }
 
+// Plain-language trigger condition per rule ("why this rule fired")
+const TRIGGERS = {
+  paper_strategy: "Documented strategy acknowledged (sii_0 ≥ 55) AND employee communication (sii_1) or line of sight (sii_em0) < 40",
+  espoused_vs_funded: "Executive sponsorship (sii_4 + sii_5) ≥ 70 AND employee funding (sii_3) or time/space (iem_3) < 40",
+  strategic_opacity: "Employee Don't-know ≥ 30% across prioritisation, measurement and funding (sii_8, sii_9, sii_3)",
+  inside_out_illusion: "Internal 'informed by customer needs' (sii_7) ≥ 70 AND customer 'understands our problems' (sii_cu0) < 50",
+  safety_gap: "Exec–employee gap ≥ 25 on risk safety (iem_0) with employees < 55; upgrades when iem_em0 < 55",
+  cynicism_loop: "Idea invitation (iem_4) ≥ 55 AND visible implementation (roi_em0 or roi_1) < 40",
+  blame_residue: "Experimentation encouraged (iem_2) ≥ 55 AND failure-as-learning (iem_1) < 40; upgrades when iem_em1 < 40",
+  capability_no_runway: "Skills (oic_0) ≥ 55 AND time/space (iem_3) < 40 — employees",
+  training_mirage: "Executive training availability (oic_1) ≥ 55 AND employee received-training (oic_em0) < 40",
+  manager_bottleneck: "Manager innovation leadership (oic_2) < 40; upgrades when raising ideas with manager (iem_em0) < 55",
+  idea_blackhole: "'Know where to submit an idea' (ipm_em0/ipm_2) < 40; upgrades when capture (ipm_4) < 55",
+  process_theatre: "Exec–employee gap ≥ 25 on defined process (ipm_1) and/or clear criteria (ipm_6)",
+  no_evidence_gates: "Executive self-report: evidence-based kill/pivot/scale gates (ipm_ex0) < 40",
+  late_customer_involvement: "Customer 'invited during development' (ipm_cu0) < 40; upgrades when internal claim (ipm_3) ≥ 55",
+  procurement_friction: "Partner 'contracting makes pilots practical' (ipm_pa1) < 40",
+  value_invisibility: "Don't-know ≥ 30% on benefit/value items (roi_2, roi_4, roi_5), or capex-rigour tracking (roi_ex0) < 40",
+  last_mile_gap: "Upstream (sii_1, iem_4, oic_0) average ≥ 55 AND landing (roi_0, roi_1) average < 45",
+  success_without_story: "Customer value (roi_cu0/cu1) ≥ 55 AND employee visible implementation (roi_em0/roi_1) < 45",
+  silo_signal: "Cross-functional collaboration (iem_10) AND knowledge sharing (iem_12) both < 40 — employees",
+  polarised_experience: "Two or more questions with employee SD ≥ 34 (n ≥ 5)",
+  partner_arms_length: "Partner 'treated as innovation partner' (iem_pa0) < 40; upgrades when direction-fit (sii_pa0) < 55",
+  no_risk_appetite: "Executive self-report: explicit innovation risk appetite (iem_ex0) < 40",
+  frontline_disempowered: "Customer 'staff empowered to solve problems' (oic_cu0) < 40; upgrades when iem_em0 < 55",
+  digital_gap: "Tools (oic_6) AND technical/data capability (oic_7) both < 40",
+  participation_bias: "Any group below 50% of its participation target (target ≥ 5) — including suppressed groups",
+  info_asymmetry: "On ≥10 shared questions: employee Don't-know ≥ 20% AND ≥ 15 points above executive Don't-know",
+};
+
 // ISO 56001:2024 clause mapping — shown on each finding so a Full-Scale report
 // doubles as an ISO-readiness evidence pack.
 const ISO = {
@@ -520,7 +550,7 @@ export function evaluateFindings(results) {
   for (const r of RULES) {
     try {
       const f = r.run(c);
-      if (f) out.push({ id: r.id, title: r.title, severity: r.severity, iso: ISO[r.id] || null, ...f });
+      if (f) out.push({ id: r.id, title: r.title, severity: r.severity, iso: ISO[r.id] || null, trigger: TRIGGERS[r.id] || null, ...f });
     } catch { /* a rule must never break the page */ }
   }
   const rank = { [CLASS.OBS]: 0, [CLASS.SUP]: 1, [CLASS.HYP]: 2 };
