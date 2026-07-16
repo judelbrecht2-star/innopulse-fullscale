@@ -43,15 +43,15 @@ export default function Responses() {
   const [drawer, setDrawer] = useState(null); // row object
   const [detail, setDetail] = useState(null); // pillar breakdown for drawer
 
+  const [servedTotals, setServedTotals] = useState({}); // group type -> served question count
+
   useEffect(() => {
     (async () => {
       const { data: u } = await sb().auth.getUser();
       if (!u.user) { router.replace("/login"); return; }
       setUser(u.user);
-      const { data: mem } = await sb().from("fs_memberships").select("role").limit(1).maybeSingle();
-      setRole(mem?.role || "");
       const { data: cs } = await sb().from("fs_campaigns")
-        .select("id, name, status, anonymity_threshold, created_at").order("created_at", { ascending: false });
+        .select("id, org_id, name, status, anonymity_threshold, questionnaire_version_id, created_at").order("created_at", { ascending: false });
       setCampaigns(cs || []);
       const target = (cs || []).find((c) => c.status === "open") || (cs || [])[0];
       if (target) setSel(target.id);
@@ -63,29 +63,52 @@ export default function Responses() {
     setErr(""); setChecks({}); setDrawer(null);
     const c = campaigns.find((x) => x.id === cid) || null;
     setCampaign(c);
-    const [{ data: gs }, { data: ls }, { data: rs }, { data: ans }, { data: cm }, { data: pg }] = await Promise.all([
+    // F8: role scoped to THIS campaign's org, not an arbitrary membership
+    if (c?.org_id) {
+      const { data: mem } = await sb().from("fs_memberships").select("role").eq("org_id", c.org_id).maybeSingle();
+      setRole(mem?.role || "");
+    }
+    const [{ data: gs }, { data: ls }, { data: rs }, { data: pg }, { data: qv }] = await Promise.all([
       sb().from("fs_groups").select("id, type, label, target_n").eq("campaign_id", cid),
       sb().from("fs_links").select("id, group_id, token, mode, active, used_count, created_at").eq("campaign_id", cid),
       sb().from("fs_responses").select("id, group_id, link_id, submitted_at, valid, flag").eq("campaign_id", cid).order("submitted_at"),
-      sb().from("fs_answers").select("response_id, not_scored"),
-      sb().from("fs_comments").select("response_id, pillar, body"),
       sb().from("fs_progress").select("id, group_id, link_id, client_ref, answered, total, started_at, last_seen").eq("campaign_id", cid).order("started_at"),
+      c?.questionnaire_version_id
+        ? sb().from("fs_questionnaire_versions").select("definition").eq("id", c.questionnaire_version_id).maybeSingle()
+        : Promise.resolve({ data: null }),
     ]);
     setGroups(gs || []); setLinks(ls || []); setResps(rs || []); setProgress(pg || []);
-    const respIds = new Set((rs || []).map((r) => r.id));
+
+    // F10: true served-questionnaire length per group type
+    const totals = {};
+    const def = qv?.definition;
+    if (def?.pillars) {
+      for (const t of ["executive", "employee", "customer", "partner", "other"]) {
+        totals[t] = def.pillars.reduce((s, p) => s + p.questions.filter((q) => !q.groups || q.groups.includes(t)).length, 0);
+      }
+    }
+    setServedTotals(totals);
+
+    // F6: fetch answers/comments only for THIS campaign's responses (chunked)
+    const ids = (rs || []).map((r) => r.id);
+    let ans = [], cm = [];
+    for (let i = 0; i < ids.length; i += 100) {
+      const chunk = ids.slice(i, i + 100);
+      const [{ data: a1 }, { data: c1 }] = await Promise.all([
+        sb().from("fs_answers").select("response_id, not_scored").in("response_id", chunk),
+        sb().from("fs_comments").select("response_id, pillar, body").in("response_id", chunk),
+      ]);
+      ans = ans.concat(a1 || []); cm = cm.concat(c1 || []);
+    }
     const a = {};
-    for (const row of ans || []) {
-      if (!respIds.has(row.response_id)) continue;
+    for (const row of ans) {
       a[row.response_id] = a[row.response_id] || { answered: 0, dk: 0 };
       a[row.response_id].answered++;
       if (row.not_scored) a[row.response_id].dk++;
     }
     setAggs(a);
     const cmap = {};
-    for (const row of cm || []) {
-      if (!respIds.has(row.response_id)) continue;
-      (cmap[row.response_id] = cmap[row.response_id] || []).push(row);
-    }
+    for (const row of cm) (cmap[row.response_id] = cmap[row.response_id] || []).push(row);
     setComms(cmap);
   }, [campaigns]);
 
@@ -102,11 +125,13 @@ export default function Responses() {
     const dkPct = agg.answered ? Math.round((agg.dk / agg.answered) * 100) : 0;
     const quality = r.flag === "review" ? "Review" : r.flag === "test" ? "Test" : dkPct > 30 ? "Review" : "Good";
     const status = !r.valid ? (r.flag === "test" ? "Test" : "Excluded") : "Completed";
+    const g = groupById[r.group_id];
     rows.push({
       kind: "response", id: r.id, r,
       ref: `Anonymous #${String(i + 1).padStart(3, "0")}`,
-      group: groupById[r.group_id], status, quality, dkPct,
-      answered: agg.answered, total: agg.answered,
+      group: g, status, quality, dkPct,
+      answered: agg.answered,
+      total: servedTotals[g?.type] || agg.answered, // F10: measured against the real served set
       nComments: (comms[r.id] || []).length,
       when: r.submitted_at, whenLabel: fmt(r.submitted_at),
     });
@@ -338,36 +363,53 @@ export default function Responses() {
               {groupName(drawer.group)} · Submitted {drawer.whenLabel} · Identity not collected
             </p>
 
-            <div className="vbanner">🛡 These are the respondent&apos;s verbatim comments — not an AI summary.</div>
-
-            <h2 style={{ fontSize: 15, margin: "14px 0 8px" }}>Pillar breakdown</h2>
-            {!detail ? <p className="muted small">Loading…</p> : (
-              <table className="t">
-                <thead><tr><th>Pillar</th><th>Score</th><th>Answered</th><th>DK/NA</th></tr></thead>
-                <tbody>
-                  {Object.entries(detail).map(([pid, d]) => (
-                    <tr key={pid}>
-                      <td className="small"><b>{PILLAR_NAMES[pid] || pid}</b></td>
-                      <td className="small">{d.c ? Math.round((d.sum / d.c) * 10) / 10 : "—"}</td>
-                      <td className="small">{d.n}</td>
-                      <td className="small">{d.dk}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-            <p className="small muted" style={{ margin: "6px 0 0" }}>
-              Individual-level view — visible only to your team, never to respondents or in reports.
-            </p>
-
-            <h2 style={{ fontSize: 15, margin: "18px 0 8px" }}>Written responses ({(comms[drawer.id] || []).length})</h2>
-            {(comms[drawer.id] || []).length === 0 ? <p className="muted small">None left.</p> :
-              (comms[drawer.id] || []).map((cm, i) => (
-                <div className="vcard" key={i}>
-                  <div className="ph"><span className="pn">{PILLAR_NAMES[cm.pillar] || cm.pillar}</span><span className="tag">Verbatim response</span></div>
-                  <p>{cm.body}</p>
+            {(() => {
+              // F4: while a group is below the anonymity threshold, individual detail is
+              // restricted to the org owner — small groups are the re-identification risk.
+              const groupN = resps.filter((x) => x.valid && x.group_id === drawer.group?.id).length;
+              const locked = groupN < threshold && role !== "owner";
+              if (locked) return (
+                <div className="lockrow" style={{ marginTop: 16 }}>
+                  🔒 This group has {groupN} of {threshold} responses. To protect respondents in
+                  small groups, per-response answers and written feedback unlock for your role
+                  once the group passes the anonymity threshold (the owner can view sooner).
                 </div>
-              ))}
+              );
+              return (
+                <>
+                  <div className="vbanner">🛡 These are the respondent&apos;s verbatim comments — not an AI summary.</div>
+
+                  <h2 style={{ fontSize: 15, margin: "14px 0 8px" }}>Pillar breakdown</h2>
+                  {!detail ? <p className="muted small">Loading…</p> : (
+                    <table className="t">
+                      <thead><tr><th>Pillar</th><th>Score</th><th>Answered</th><th>DK/NA</th></tr></thead>
+                      <tbody>
+                        {Object.entries(detail).map(([pid, d]) => (
+                          <tr key={pid}>
+                            <td className="small"><b>{PILLAR_NAMES[pid] || pid}</b></td>
+                            <td className="small">{d.c ? Math.round((d.sum / d.c) * 10) / 10 : "—"}</td>
+                            <td className="small">{d.n}</td>
+                            <td className="small">{d.dk}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                  <p className="small muted" style={{ margin: "6px 0 0" }}>
+                    Individual-level view — visible only to your team, never to respondents or in reports.
+                  </p>
+
+                  <h2 style={{ fontSize: 15, margin: "18px 0 8px" }}>Written responses ({(comms[drawer.id] || []).length})</h2>
+                  {(comms[drawer.id] || []).length === 0 ? <p className="muted small">None left.</p> :
+                    (comms[drawer.id] || []).map((cm, i) => (
+                      <div className="vcard" key={i}>
+                        <div className="ph"><span className="pn">{PILLAR_NAMES[cm.pillar] || cm.pillar}</span><span className="tag">Verbatim response</span></div>
+                        <p>{cm.body}</p>
+                      </div>
+                    ))}
+                </>
+              );
+            })()}
 
             {canManage ? (
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 18 }}>
