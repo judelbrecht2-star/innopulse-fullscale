@@ -42,15 +42,34 @@ function ctx(results) {
     const e = qs[k]?.groups?.[t];
     return e ? `[${qs[k].pillar_short} | ${k} | ${t} | n=${e.n_scored} | ${e.mean ?? "—"}${e.n_dkna ? ` | DK ${dk(k, t)}%` : ""}]` : `[${k} | ${t} | no data]`;
   };
-  return { qs, vis, m, sd, dk, gapEE, avg, dkAvg, cite };
+  return { qs, vis, allGroups: results.groups || [], m, sd, dk, gapEE, avg, dkAvg, cite };
 }
+
+// ISO 56001:2024 clause mapping — shown on each finding so a Full-Scale report
+// doubles as an ISO-readiness evidence pack.
+const ISO = {
+  paper_strategy: "Clause 6 · Planning", espoused_vs_funded: "Clause 5 · Leadership",
+  strategic_opacity: "Clause 6 · Planning", inside_out_illusion: "Clause 6 · Planning",
+  safety_gap: "Clause 5 · Leadership & culture", cynicism_loop: "Clause 10 · Improvement",
+  blame_residue: "Clause 7 · Support (culture)", capability_no_runway: "Clause 7 · Support (resources)",
+  training_mirage: "Clause 7 · Support (competence)", manager_bottleneck: "Clause 5 · Leadership",
+  idea_blackhole: "Clause 8 · Operation", process_theatre: "Clause 8 · Operation",
+  no_evidence_gates: "Clause 8 · Operation (portfolio)", late_customer_involvement: "Clause 8 · Operation",
+  procurement_friction: "Clause 8 · Operation (collaboration)", value_invisibility: "Clause 9 · Performance evaluation",
+  last_mile_gap: "Clause 9 · Performance evaluation", success_without_story: "Clause 10 · Improvement",
+  silo_signal: "Clause 7 · Support (knowledge)", polarised_experience: "Clause 9 · Performance evaluation",
+  partner_arms_length: "Clause 4 · Context (interested parties)", no_risk_appetite: "Clause 5 · Leadership (risk appetite)",
+  frontline_disempowered: "Clause 5 · Leadership (empowerment)", digital_gap: "Clause 7 · Support (infrastructure)",
+  participation_bias: "Clause 9 · Performance evaluation (data quality)", info_asymmetry: "Clause 7 · Support (awareness & communication)",
+};
 
 // Each rule: { id, title, severity 1..3, run(c) -> null | {klass, confidence, text, evidence[], alternatives, validate} }
 const RULES = [
   {
     id: "participation_bias", title: "Participation is low enough to bias every other number", severity: 3,
     run: (c) => {
-      const weak = Object.values(c.vis).filter((g) => g.target_n >= 5 && g.n / g.target_n < 0.5);
+      // participation is not privacy-sensitive — check ALL groups, including suppressed ones
+      const weak = (c.allGroups || []).filter((g) => g.target_n >= 5 && g.n / g.target_n < 0.5);
       if (!weak.length) return null;
       return {
         klass: CLASS.OBS, confidence: "High",
@@ -501,7 +520,7 @@ export function evaluateFindings(results) {
   for (const r of RULES) {
     try {
       const f = r.run(c);
-      if (f) out.push({ id: r.id, title: r.title, severity: r.severity, ...f });
+      if (f) out.push({ id: r.id, title: r.title, severity: r.severity, iso: ISO[r.id] || null, ...f });
     } catch { /* a rule must never break the page */ }
   }
   const rank = { [CLASS.OBS]: 0, [CLASS.SUP]: 1, [CLASS.HYP]: 2 };
