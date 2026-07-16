@@ -7,6 +7,7 @@
   --amber:#e8a13c; --amber-soft:#fdf1dd;
   --blue:#3b74d1; --blue-soft:#e3edfb;
   --green:#1a7f4b; --green-soft:#e1f5e8;
+  --violet:#7a5bd6; --violet-soft:#eeeafb;
   --grey-soft:#f0f0f2;
   --band-low:#c0392b; --band-med:#0e6b5f; --band-high:#4a7a00;
   /* respondent-page accents (public InnoPulse palette) */
@@ -117,6 +118,35 @@ label.f{display:block;font-size:12.5px;font-weight:700;margin:14px 0 6px;color:#
 .c-blue{background:var(--blue-soft)} .c-blue svg{stroke:var(--blue)}
 .c-grey{background:var(--grey-soft)} .c-grey svg{stroke:#8a8a92}
 .c-green{background:var(--green-soft)} .c-green svg{stroke:var(--green)}
+.c-violet{background:var(--violet-soft)} .c-violet svg{stroke:var(--violet)}
+
+/* score chips (band-tinted) */
+.schip{display:inline-block;min-width:64px;text-align:center;font-weight:800;font-size:13.5px;
+  padding:7px 10px;border-radius:9px}
+.schip.low{background:var(--primary-soft);color:var(--band-low)}
+.schip.med{background:var(--teal-soft);color:var(--band-med)}
+.schip.high{background:var(--green-soft);color:var(--band-high)}
+.lockrow{background:var(--grey-soft);border-radius:9px;padding:9px 12px;color:var(--muted);
+  font-size:13px;display:flex;align-items:center;gap:8px}
+
+/* dumbbell gap chart */
+.dumb{display:grid;grid-template-columns:150px 46px 1fr 46px 74px;gap:10px;align-items:center;
+  padding:9px 0}
+.dumb .plabel{font-weight:600;font-size:14px}
+.dumb .val{font-weight:800;font-size:13.5px;text-align:right}
+.dumb .val.right{text-align:left}
+.dumb .trackwrap{position:relative;height:22px}
+.dumb .track{position:absolute;left:0;right:0;top:50%;height:2px;background:#e4e4e8;transform:translateY(-50%)}
+.dumb .seg{position:absolute;top:50%;height:2.5px;background:#c9c9cf;transform:translateY(-50%)}
+.dumb .dot{position:absolute;top:50%;width:12px;height:12px;border-radius:50%;transform:translate(-50%,-50%);
+  box-shadow:0 0 0 3px #fff}
+.dumb .delta{font-weight:800;font-size:13px;text-align:right;color:var(--ink)}
+.axis{display:grid;grid-template-columns:150px 46px 1fr 46px 74px;gap:10px;color:var(--muted);
+  font-size:11.5px;margin-top:2px}
+.axis .ticks{display:flex;justify-content:space-between}
+.legend-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:1px}
+.alertcard{background:#fdf1f0;border:1px solid #f6d5d3;border-radius:16px;padding:20px 22px}
+@media(max-width:900px){.dumb{grid-template-columns:110px 40px 1fr 40px 60px}.axis{grid-template-columns:110px 40px 1fr 40px 60px}}
 
 /* ---------- Tables ---------- */
 table.t{width:100%;border-collapse:collapse;font-size:14px}

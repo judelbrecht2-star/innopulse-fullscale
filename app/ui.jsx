@@ -31,8 +31,9 @@ export const GROUP_META = {
   employee: { label: "Employees", chip: "c-teal", icon: "people" },
   customer: { label: "Customers", chip: "c-amber", icon: "people" },
   partner: { label: "Partners", chip: "c-blue", icon: "hands" },
+  other: { label: "Other stakeholders", chip: "c-violet", icon: "people" },
 };
-export const GROUP_BAR = { executive: "var(--primary)", employee: "var(--teal)", customer: "var(--amber)", partner: "var(--blue)" };
+export const GROUP_BAR = { executive: "var(--primary)", employee: "var(--teal)", customer: "var(--amber)", partner: "var(--blue)", other: "var(--violet)" };
 
 export function bandCls(v) {
   if (v === null || v === undefined) return "";
@@ -53,7 +54,7 @@ export function Shell({ active, user, children }) {
     { id: "overview", label: "Overview", href: "/dashboard", icon: I.home },
     { id: "campaigns", label: "Campaigns", href: "/campaigns", icon: I.rocket },
     { id: "responses", label: "Responses", soon: true, icon: I.chat },
-    { id: "insights", label: "Insights", soon: true, icon: I.chart },
+    { id: "insights", label: "Insights", href: "/insights", icon: I.chart },
     { id: "reports", label: "Reports", soon: true, icon: I.doc },
     { id: "settings", label: "Settings", href: "/account", icon: I.gear },
   ];
