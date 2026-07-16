@@ -5,6 +5,26 @@ import { useRouter } from "next/navigation";
 import { sb, FN_BASE } from "../../lib/supabase";
 import { Shell, I, GROUP_META, GROUP_BAR, groupName } from "../ui";
 import { sharedPillarScores, MIN_ITEMS, MIN_N } from "../lib/gaps";
+import { evaluateFindings, CLASS } from "../lib/findings";
+
+function FindingCard({ f }) {
+  const chip = f.klass === CLASS.OBS ? "teal" : f.klass === CLASS.SUP ? "draft" : "closed";
+  const dot = f.severity === 3 ? "var(--primary)" : f.severity === 2 ? "var(--amber, #b7791f)" : "var(--muted)";
+  return (
+    <details style={{ borderTop: "1px solid var(--line)", padding: "10px 0" }}>
+      <summary style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ width: 9, height: 9, borderRadius: "50%", background: dot, flex: "0 0 9px" }} />
+        <b style={{ fontSize: 14 }}>{f.title}</b>
+        <span className={"pill " + chip}>{f.klass}</span>
+        <span className="small muted">confidence: {f.confidence}</span>
+      </summary>
+      <p className="small" style={{ margin: "10px 0 6px", lineHeight: 1.6 }}>{f.text}</p>
+      <p className="small muted" style={{ margin: "6px 0" }}>{f.evidence.join("  ")}</p>
+      <p className="small" style={{ margin: "6px 0" }}><b>Also consider:</b> <span className="muted">{f.alternatives}</span></p>
+      <p className="small" style={{ margin: "6px 0" }}><b>To validate:</b> <span className="muted">{f.validate}</span></p>
+    </details>
+  );
+}
 
 function bandChip(v) { return v == null ? "" : v < 40 ? "low" : v < 70 ? "med" : "high"; }
 
@@ -75,6 +95,7 @@ export default function Insights() {
   const reliable = gapRows.filter((r) => r.d != null && r.items >= MIN_ITEMS);
   const biggest = reliable.sort((x, y) => y.d - x.d)[0] || null;
   const smallSample = A && B && (A.n < MIN_N || B.n < MIN_N);
+  const findings = results ? evaluateFindings(results) : [];
 
   return (
     <Shell active="insights" user={user}>
@@ -113,6 +134,20 @@ export default function Insights() {
             : <span className="small muted">needs two visible groups with {MIN_ITEMS}+ shared questions</span>}
         </div></div>
       </div>
+
+      {findings.length ? (
+        <div className="card">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
+            <h2 style={{ margin: 0 }}>Automatic findings</h2>
+            <span className="small muted">{findings.length} pattern{findings.length === 1 ? "" : "s"} detected · rules fire only on converging evidence and cite their questions</span>
+          </div>
+          {findings.map((f) => <FindingCard key={f.id} f={f} />)}
+          <p className="small muted" style={{ marginTop: 10 }}>
+            Classes: <b>Observed</b> = directly visible in the data · <b>Supported interpretation</b> = several signals converge ·
+            <b> Plausible hypothesis</b> = credible, still needs validation. Findings never identify individuals and respect the anonymity threshold.
+          </p>
+        </div>
+      ) : null}
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0,2fr) minmax(260px,1fr)", gap: 18, alignItems: "start" }} className="gapgrid">
         <style>{`@media(max-width:980px){.gapgrid{grid-template-columns:1fr!important}}`}</style>
