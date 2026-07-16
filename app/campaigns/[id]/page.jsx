@@ -3,9 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { sb, FN_BASE } from "../../../lib/supabase";
-import { TopBar, bandCls } from "../../ui";
-
-const GROUP_LABEL = { executive: "Executives", employee: "Employees", customer: "Customers", partner: "Partners" };
+import { Shell, I, bandCls, GROUP_META, GROUP_BAR } from "../../ui";
 
 function randToken() {
   const b = new Uint8Array(8);
@@ -39,16 +37,13 @@ export default function Campaign() {
   const [err, setErr] = useState("");
   const [copied, setCopied] = useState("");
   const [busy, setBusy] = useState(false);
-  // settings
   const [editName, setEditName] = useState("");
   const [editThreshold, setEditThreshold] = useState("");
   const [editCloses, setEditCloses] = useState("");
   const [editThanks, setEditThanks] = useState("");
   const [editClosedMsg, setEditClosedMsg] = useState("");
   const [saved, setSaved] = useState(false);
-  // QR
-  const [qr, setQr] = useState(null); // { token, dataUrl }
-  // unique links
+  const [qr, setQr] = useState(null);
   const [uniqGroup, setUniqGroup] = useState("");
   const [uniqCount, setUniqCount] = useState("5");
 
@@ -87,7 +82,6 @@ export default function Campaign() {
   useEffect(() => { load(); }, [load]);
 
   const canManage = role === "owner" || role === "manager";
-
   function respondUrl(token) { return `${window.location.origin}/respond/${token}`; }
   async function copy(token) {
     try { await navigator.clipboard.writeText(respondUrl(token)); setCopied(token); setTimeout(() => setCopied(""), 1600); } catch {}
@@ -96,7 +90,7 @@ export default function Campaign() {
     if (qr && qr.token === token) { setQr(null); return; }
     try {
       const QRCode = (await import("qrcode")).default;
-      const dataUrl = await QRCode.toDataURL(respondUrl(token), { width: 480, margin: 2, color: { dark: "#16160f", light: "#ffffff" } });
+      const dataUrl = await QRCode.toDataURL(respondUrl(token), { width: 480, margin: 2, color: { dark: "#17171a", light: "#ffffff" } });
       setQr({ token, dataUrl });
     } catch { setErr("Could not generate the QR code."); }
   }
@@ -137,14 +131,11 @@ export default function Campaign() {
     const n = Math.min(50, Math.max(1, Number(uniqCount || 5)));
     if (!uniqGroup) return;
     setBusy(true);
-    const rows = Array.from({ length: n }, () => ({
-      campaign_id: id, group_id: uniqGroup, token: randToken(), mode: "unique", max_uses: 1,
-    }));
+    const rows = Array.from({ length: n }, () => ({ campaign_id: id, group_id: uniqGroup, token: randToken(), mode: "unique", max_uses: 1 }));
     const { error } = await sb().from("fs_links").insert(rows);
     setBusy(false);
     if (error) setErr(error.message); else load();
   }
-
   function exportSummary() {
     if (!results) return;
     const pillars = results.pillars || [];
@@ -152,8 +143,8 @@ export default function Campaign() {
       ["Status", results.campaign.status], ["Anonymity threshold", results.campaign.anonymity_threshold], [],
       ["Group", "Responses", "Target", ...pillars.map((p) => p.short), "Don't know / N-A %"]];
     for (const g of results.groups || []) {
-      if (g.suppressed) rows.push([GROUP_LABEL[g.type] || g.type, g.n, g.target_n, `suppressed (below ${results.campaign.anonymity_threshold})`]);
-      else rows.push([GROUP_LABEL[g.type] || g.type, g.n, g.target_n, ...pillars.map((p) => g.pillars[p.id] ?? ""), g.dkna_pct]);
+      if (g.suppressed) rows.push([GROUP_META[g.type]?.label || g.type, g.n, g.target_n, `suppressed (below ${results.campaign.anonymity_threshold})`]);
+      else rows.push([GROUP_META[g.type]?.label || g.type, g.n, g.target_n, ...pillars.map((p) => g.pillars[p.id] ?? ""), g.dkna_pct]);
     }
     if (results.overall && !results.overall.suppressed) {
       rows.push(["All groups", results.overall.n, "", ...pillars.map((p) => results.overall.pillars[p.id] ?? ""), ""]);
@@ -170,7 +161,7 @@ export default function Campaign() {
     const d = await r.json();
     const types = (d.groups || []).filter((g) => !g.suppressed).map((g) => g.type);
     const head = ["Pillar", "Question"];
-    for (const t of types) head.push(`${GROUP_LABEL[t] || t} mean`, `${GROUP_LABEL[t] || t} n`, `${GROUP_LABEL[t] || t} DK/NA`);
+    for (const t of types) head.push(`${GROUP_META[t]?.label || t} mean`, `${GROUP_META[t]?.label || t} n`, `${GROUP_META[t]?.label || t} DK/NA`);
     const rows = [head];
     for (const q of d.questions || []) {
       const row = [q.pillar, q.text];
@@ -183,30 +174,125 @@ export default function Campaign() {
     downloadCsv(`${d.campaign.name.replace(/[^\w]+/g, "-")}-questions.csv`, rows);
   }
 
-  if (err && !c) return (<><TopBar user={user} /><div className="err">{err}</div></>);
-  if (!c) return <p className="muted">Loading…</p>;
+  if (err && !c) return (<Shell active="campaigns" user={user}><div className="err">{err}</div></Shell>);
+  if (!c) return (<Shell active="campaigns" user={user}><p className="muted">Loading…</p></Shell>);
 
   const linkByGroup = {};
   for (const l of links) if (l.mode === "group" && l.active && !linkByGroup[l.group_id]) linkByGroup[l.group_id] = l;
-  const inactiveGroupLinks = links.filter((l) => l.mode === "group" && !l.active);
+  const inactiveCount = links.filter((l) => !l.active).length;
+  const activeCount = links.filter((l) => l.active).length;
   const uniqueLinks = links.filter((l) => l.mode === "unique");
   const groupById = {};
   for (const g of groups) groupById[g.id] = g;
   const resByGroup = {};
   if (results?.groups) for (const g of results.groups) resByGroup[g.id] = g;
   const pillars = results?.pillars || [];
+  const totalN = (results?.groups || []).reduce((s, g) => s + (g.n || 0), 0);
+  const totalTarget = groups.reduce((s, g) => s + (g.target_n || 0), 0);
+  const completion = totalTarget ? Math.round((totalN / totalTarget) * 100) : 0;
 
   return (
-    <>
-      <TopBar user={user} />
-      <h1>{c.name}</h1>
-      <p className="small muted">
-        <span className={"pill " + c.status}>{c.status}</span>{" "}
-        · Anonymity threshold: {c.anonymity_threshold} response{c.anonymity_threshold === 1 ? "" : "s"} per group
-        {c.closes_at ? <> · closes {new Date(c.closes_at).toLocaleDateString()}</> : null}
-      </p>
+    <Shell active="campaigns" user={user}>
+      <div className="crumbs"><Link href="/campaigns">Campaigns</Link> / <b>{c.name}</b></div>
+      <div className="pagehead">
+        <div>
+          <h1>Campaign links</h1>
+          <p className="lead">
+            Each stakeholder group has its own signed link — the URL carries only a random
+            token, so respondents can&apos;t change which group they answer for.
+          </p>
+        </div>
+        {canManage ? (
+          <a className="btn btn-primary" href="#invites"><I.plus style={{ width: 16, height: 16, stroke: "#fff" }} /> Generate link</a>
+        ) : null}
+      </div>
       {err ? <div className="err">{err}</div> : null}
-      <div style={{ margin: "12px 0 20px", display: "flex", gap: 8, flexWrap: "wrap" }}>
+
+      <div className="stats">
+        <div className="stat"><span className="ic c-red"><I.link /></span><div><div className="k">Active links</div><div className="v">{activeCount}</div></div></div>
+        <div className="stat"><span className="ic c-teal"><I.people /></span><div><div className="k">Responses</div><div className="v">{totalN} <span>/ {totalTarget || "—"}</span></div></div></div>
+        <div className="stat"><span className="ic c-amber"><I.pie /></span><div><div className="k">Completion</div><div className="v">{completion}%</div></div></div>
+        <div className="stat"><span className="ic c-grey"><I.unlink /></span><div><div className="k">Deactivated</div><div className="v">{inactiveCount}</div></div></div>
+      </div>
+
+      <div className="card">
+        <table className="t">
+          <thead><tr><th>Group</th><th>Status</th><th>Signed link</th><th>Responses</th><th>Completion</th><th style={{ textAlign: "right" }}>Actions</th></tr></thead>
+          <tbody>
+            {groups.map((g) => {
+              const meta = GROUP_META[g.type] || { label: g.type, chip: "c-grey", icon: "people" };
+              const Icon = I[meta.icon] || I.people;
+              const l = linkByGroup[g.id];
+              const r = resByGroup[g.id];
+              const n = r?.n || 0;
+              const pct = g.target_n ? Math.min(100, Math.round((n / g.target_n) * 100)) : 0;
+              return (
+                <tr key={g.id}>
+                  <td>
+                    <div className="gname">
+                      <span className={"chip " + meta.chip}><Icon /></span>
+                      <span><div className="nm">{meta.label}</div><div className="sub">{g.label}</div></span>
+                    </div>
+                  </td>
+                  <td>{l ? <span className="pill open">Active</span> : <span className="pill closed">No link</span>}</td>
+                  <td>
+                    {l ? (
+                      <span className="codebox">/respond/{l.token}
+                        <button title="Copy link" onClick={() => copy(l.token)}><I.copy /></button>
+                      </span>
+                    ) : <span className="small muted">—</span>}
+                  </td>
+                  <td><b>{n}</b> <span className="small muted">/ {g.target_n || "—"}</span></td>
+                  <td>
+                    <div className="cbar">
+                      <div className="track"><div className="fill" style={{ width: pct + "%", background: GROUP_BAR[g.type] || "var(--primary)" }} /></div>
+                      <span className="pct">{pct}%</span>
+                    </div>
+                  </td>
+                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                    {l ? (
+                      <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+                        <button className="btn btn-outline btn-sm" onClick={() => copy(l.token)}>
+                          {copied === l.token ? "Copied ✓" : "Copy link"}
+                        </button>
+                        <button className="iconbtn" title="QR code" onClick={() => showQr(l.token)}><I.qr /></button>
+                        {canManage ? (
+                          <details className="rowmenu">
+                            <summary className="iconbtn" style={{ fontWeight: 800 }}>⋯</summary>
+                            <div className="dd">
+                              <button disabled={busy} onClick={() => deactivateLink(l.id)}>Deactivate link</button>
+                              <button disabled={busy} onClick={() => regenerateLink(g.id)}>Issue new link</button>
+                            </div>
+                          </details>
+                        ) : null}
+                      </span>
+                    ) : canManage ? (
+                      <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => regenerateLink(g.id)}>New link</button>
+                    ) : null}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {qr ? (
+          <div style={{ marginTop: 14, textAlign: "center", padding: 16, border: "1px solid var(--line)", borderRadius: 12 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={qr.dataUrl} alt="QR code for the campaign link" style={{ width: 240, height: 240 }} />
+            <p className="small muted" style={{ margin: "8px 0 10px" }}>
+              Scan to open <span className="codebox" style={{ padding: "3px 8px" }}>/respond/{qr.token}</span>
+            </p>
+            <a className="btn btn-ghost btn-sm" href={qr.dataUrl} download={`innopulse-qr-${qr.token}.png`}>Download PNG</a>
+          </div>
+        ) : null}
+        {inactiveCount ? (
+          <div className="infoline"><I.info />
+            {inactiveCount} deactivated link{inactiveCount === 1 ? "" : "s"} — old URLs now show &quot;link deactivated&quot; to respondents.
+          </div>
+        ) : null}
+      </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "0 0 18px" }}>
         {canManage ? (c.status !== "open" ? (
           <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => setStatus("open")}>Open collection</button>
         ) : (
@@ -217,71 +303,16 @@ export default function Campaign() {
         <Link className="btn btn-ghost btn-sm" href={`/campaigns/${id}/report`}>Report view (print / PDF)</Link>
       </div>
 
-      <div className="card">
-        <h2>Campaign links</h2>
-        <p className="muted small">
-          Each stakeholder group has its own signed link — the URL carries only a random
-          token, so respondents can&apos;t change which group they answer for.
-        </p>
-        <table className="t">
-          <thead><tr><th>Group</th><th>Link</th><th>Responses</th><th></th></tr></thead>
-          <tbody>
-            {groups.map((g) => {
-              const l = linkByGroup[g.id];
-              const r = resByGroup[g.id];
-              return (
-                <tr key={g.id}>
-                  <td><b>{GROUP_LABEL[g.type] || g.type}</b><div className="small muted">{g.label}</div></td>
-                  <td>{l ? <code className="small">/respond/{l.token}</code> : <span className="muted small">no active link</span>}</td>
-                  <td>{r ? `${r.n} / ${g.target_n || "—"}` : "0"}</td>
-                  <td style={{ whiteSpace: "nowrap" }}>
-                    {l ? (
-                      <>
-                        <button className="btn btn-ghost btn-sm" onClick={() => copy(l.token)}>
-                          {copied === l.token ? "Copied ✓" : "Copy link"}
-                        </button>{" "}
-                        <button className="btn btn-ghost btn-sm" onClick={() => showQr(l.token)}>
-                          {qr && qr.token === l.token ? "Hide QR" : "QR code"}
-                        </button>{" "}
-                        {canManage ? <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => deactivateLink(l.id)}>Deactivate</button> : null}
-                      </>
-                    ) : canManage ? (
-                      <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => regenerateLink(g.id)}>New link</button>
-                    ) : null}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        {inactiveGroupLinks.length ? (
-          <p className="small muted" style={{ marginTop: 8 }}>
-            {inactiveGroupLinks.length} deactivated group link{inactiveGroupLinks.length === 1 ? "" : "s"} — old URLs now show &quot;link deactivated&quot; to respondents.
-          </p>
-        ) : null}
-        {qr ? (
-          <div style={{ marginTop: 14, textAlign: "center", padding: 16, border: "1px solid var(--line)", borderRadius: 12, background: "#fff" }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={qr.dataUrl} alt="QR code for the campaign link" style={{ width: 240, height: 240 }} />
-            <p className="small muted" style={{ margin: "8px 0 10px" }}>
-              Scan to open <code className="small">/respond/{qr.token}</code> — drop it into slides, posters or a Teams chat.
-            </p>
-            <a className="btn btn-ghost btn-sm" href={qr.dataUrl} download={`innopulse-qr-${qr.token}.png`}>Download PNG</a>
-          </div>
-        ) : null}
-      </div>
-
       {canManage ? (
-        <div className="card">
+        <div className="card" id="invites">
           <h2>Unique invitation links</h2>
-          <p className="muted small">
-            Single-use links let you track completion per invitee without connecting
-            identities to answers. Each link dies after one submission.
+          <p className="small muted">
+            Single-use links track completion per invitee without connecting identities to
+            answers. Each link dies after one submission.
           </p>
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
-            <select value={uniqGroup} onChange={(e) => setUniqGroup(e.target.value)}
-              style={{ padding: "9px 12px", border: "1px solid var(--line)", borderRadius: 10, fontSize: 14.5, background: "#fff" }}>
-              {groups.map((g) => <option key={g.id} value={g.id}>{GROUP_LABEL[g.type] || g.type}</option>)}
+            <select value={uniqGroup} onChange={(e) => setUniqGroup(e.target.value)} style={{ width: "auto" }}>
+              {groups.map((g) => <option key={g.id} value={g.id}>{GROUP_META[g.type]?.label || g.type}</option>)}
             </select>
             <input type="text" inputMode="numeric" value={uniqCount}
               onChange={(e) => setUniqCount(e.target.value.replace(/\D/g, ""))} style={{ width: 70 }} />
@@ -295,10 +326,10 @@ export default function Campaign() {
                   const used = l.used_count >= (l.max_uses || 1) || !l.active;
                   return (
                     <tr key={l.id}>
-                      <td className="small">{GROUP_LABEL[groupById[l.group_id]?.type] || "—"}</td>
-                      <td><code className="small">/respond/{l.token}</code></td>
+                      <td className="small">{GROUP_META[groupById[l.group_id]?.type]?.label || "—"}</td>
+                      <td><span className="codebox">/respond/{l.token}</span></td>
                       <td><span className={"pill " + (used ? "closed" : "open")}>{used ? "used" : "unused"}</span></td>
-                      <td>{!used ? (
+                      <td style={{ textAlign: "right" }}>{!used ? (
                         <button className="btn btn-ghost btn-sm" onClick={() => copy(l.token)}>
                           {copied === l.token ? "Copied ✓" : "Copy"}
                         </button>
@@ -314,9 +345,7 @@ export default function Campaign() {
 
       <div className="card">
         <h2>Results by stakeholder group</h2>
-        {!results ? (
-          <p className="muted">Loading results…</p>
-        ) : (
+        {!results ? <p className="muted">Loading results…</p> : (
           <>
             <table className="t">
               <thead>
@@ -329,7 +358,7 @@ export default function Campaign() {
               <tbody>
                 {(results.groups || []).map((g) => (
                   <tr key={g.id}>
-                    <td><b>{GROUP_LABEL[g.type] || g.type}</b></td>
+                    <td><b>{GROUP_META[g.type]?.label || g.type}</b></td>
                     <td>{g.n}</td>
                     {g.suppressed ? (
                       <td colSpan={pillars.length + 1} className="muted small">
@@ -390,10 +419,10 @@ export default function Campaign() {
                   onChange={(e) => setEditCloses(e.target.value)} />
               </div>
             </div>
-            <label className="f">Thank-you message <span className="muted">(shown after a respondent submits; optional)</span></label>
+            <label className="f">Thank-you message <span className="muted">(optional)</span></label>
             <textarea value={editThanks} onChange={(e) => setEditThanks(e.target.value)}
               placeholder="Default: Your responses have been recorded anonymously." />
-            <label className="f">Closed message <span className="muted">(shown when collection is closed or past its window; optional)</span></label>
+            <label className="f">Closed message <span className="muted">(optional)</span></label>
             <textarea value={editClosedMsg} onChange={(e) => setEditClosedMsg(e.target.value)}
               placeholder="Default: This assessment is not currently open." />
             <div style={{ marginTop: 14 }}>
@@ -403,7 +432,7 @@ export default function Campaign() {
           </form>
         </div>
       ) : null}
-    </>
+    </Shell>
   );
 }
 
@@ -418,16 +447,12 @@ function GapsCard({ results }) {
         <h2>Stakeholder perception gaps</h2>
         <p className="muted small">
           Gaps appear once at least two stakeholder groups have enough responses to show.
-          A 30-point difference between what leadership believes and what employees
-          experience is often the single most important finding in the assessment.
         </p>
       </div>
     );
   }
   const rows = pillars.map((p) => {
-    const entries = visible
-      .map((g) => ({ type: g.type, v: g.pillars?.[p.id] }))
-      .filter((e) => e.v !== null && e.v !== undefined);
+    const entries = visible.map((g) => ({ type: g.type, v: g.pillars?.[p.id] })).filter((e) => e.v != null);
     if (entries.length < 2) return { p, entries, spread: null };
     const hi = entries.reduce((a, b) => (b.v > a.v ? b : a));
     const lo = entries.reduce((a, b) => (b.v < a.v ? b : a));
@@ -445,12 +470,12 @@ function GapsCard({ results }) {
         <thead><tr><th>Pillar</th><th>Group scores</th><th>Spread</th></tr></thead>
         <tbody>
           {rows.map(({ p, entries, spread, hi, lo }) => (
-            <tr key={p.id} style={spread !== null && spread === maxSpread && spread >= 15 ? { background: "#fdf6e0" } : undefined}>
+            <tr key={p.id} style={spread !== null && spread === maxSpread && spread >= 15 ? { background: "#fff8ef" } : undefined}>
               <td><b>{p.short}</b></td>
               <td>
                 {entries.map((e) => (
-                  <span key={e.type} className="pill" style={{ marginRight: 6, background: "#f1f1e7", color: "#3c3c34" }}>
-                    {GROUP_LABEL[e.type] || e.type}: <b>{e.v}</b>
+                  <span key={e.type} className="pill closed" style={{ marginRight: 6 }}>
+                    {GROUP_META[e.type]?.label || e.type}: <b>{e.v}</b>
                   </span>
                 ))}
               </td>
@@ -458,7 +483,7 @@ function GapsCard({ results }) {
                 {spread === null ? "—" : (
                   <>
                     {spread}
-                    {spread >= 20 ? <span className="small" style={{ color: "var(--red)" }}> ▲ {GROUP_LABEL[hi.type]} vs {GROUP_LABEL[lo.type]}</span> : null}
+                    {spread >= 20 ? <span className="small" style={{ color: "var(--band-low)" }}> ▲ {GROUP_META[hi.type]?.label} vs {GROUP_META[lo.type]?.label}</span> : null}
                   </>
                 )}
               </td>
@@ -502,9 +527,8 @@ function InterventionsCard({ results, library }) {
     .filter((x) => x.v !== null && x.v !== undefined)
     .sort((a, b) => a.v - b.v);
   for (const { p, v } of ranked.slice(0, 3)) {
-    const band = bandOf(v);
-    const e = library.find((x) => x.trigger_type === "band" && x.pillar === p.id && x.band === band);
-    if (e) picks.push({ entry: e, p, why: `${p.short} scored ${v} (${band})` });
+    const e = library.find((x) => x.trigger_type === "band" && x.pillar === p.id && x.band === bandOf(v));
+    if (e) picks.push({ entry: e, p, why: `${p.short} scored ${v} (${bandOf(v)})` });
   }
 
   return (
@@ -517,7 +541,7 @@ function InterventionsCard({ results, library }) {
       {picks.length === 0 ? <p className="muted">No triggers fired yet.</p> : picks.map(({ entry, p, why }, i) => (
         <details key={entry.id} open={i === 0} style={{ borderTop: "1px solid var(--line)", padding: "12px 0" }}>
           <summary style={{ cursor: "pointer", fontWeight: 700 }}>
-            {p.short} · <span className={"pill " + (entry.trigger_type === "gap" ? "closed" : entry.band === "high" ? "open" : entry.band === "medium" ? "draft" : "closed")}>
+            {p.short} · <span className={"pill " + (entry.trigger_type === "gap" ? "closed" : entry.band === "high" ? "open" : "draft")}>
               {entry.trigger_type === "gap" ? "perception gap" : entry.band}
             </span>
             <span className="small muted" style={{ marginLeft: 8 }}>{why}</span>
@@ -534,7 +558,7 @@ function InterventionsCard({ results, library }) {
           <p className="small muted" style={{ margin: "4px 0" }}><b>ISO readiness:</b> {entry.iso_map}</p>
           <div style={{ marginTop: 6 }}>
             {(entry.services || []).map((s, j) => (
-              <span key={j} className="pill" style={{ marginRight: 6, background: "var(--lime-soft)", color: "var(--deep)" }}>{s}</span>
+              <span key={j} className="pill draft" style={{ marginRight: 6 }}>{s}</span>
             ))}
           </div>
         </details>
