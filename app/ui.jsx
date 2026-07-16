@@ -48,6 +48,10 @@ export function bandCls(v) {
   return "band-high";
 }
 
+/* Single source of truth for score bands (audit F16) */
+export function bandWord(v) { return v < 40 ? "Low" : v < 70 ? "Medium" : "High"; }
+export function bandOf(v) { return v < 40 ? "low" : v < 70 ? "medium" : "high"; }
+
 /* ---------- App shell with dark sidebar ---------- */
 export function Shell({ active, user, children }) {
   const router = useRouter();
