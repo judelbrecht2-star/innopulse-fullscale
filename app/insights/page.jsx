@@ -138,15 +138,17 @@ export default function Insights() {
 
       {findings.length ? (
         <div className="card">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
             <h2 style={{ margin: 0 }}>Automatic findings</h2>
-            <span className="small muted">{findings.length} pattern{findings.length === 1 ? "" : "s"} detected · rules fire only on converging evidence and cite their questions</span>
+            <Link className="btn btn-primary btn-sm" href="/insights/findings">Review all {findings.length} findings →</Link>
           </div>
-          {findings.map((f) => <FindingCard key={f.id} f={f} />)}
-          <p className="small muted" style={{ marginTop: 10 }}>
-            Classes: <b>Observed</b> = directly visible in the data · <b>Supported interpretation</b> = several signals converge ·
-            <b> Plausible hypothesis</b> = credible, still needs validation. Findings never identify individuals and respect the anonymity threshold.
-          </p>
+          {findings.slice(0, 3).map((f) => <FindingCard key={f.id} f={f} />)}
+          {findings.length > 3 ? (
+            <p className="small muted" style={{ marginTop: 8 }}>
+              + {findings.length - 3} more pattern{findings.length - 3 === 1 ? "" : "s"} in the findings workbench —
+              with filters, evidence detail, review tracking and CSV export.
+            </p>
+          ) : null}
         </div>
       ) : null}
 
