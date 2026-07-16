@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { FN_BASE } from "../../../lib/supabase";
 
@@ -11,6 +11,10 @@ export default function Respond() {
   const [consent, setConsent] = useState(false);
   const [answers, setAnswers] = useState({});
   const [comments, setComments] = useState({});
+  const [restored, setRestored] = useState(false);
+  const [thanks, setThanks] = useState(null);
+  const draftKey = "fs_draft_" + token;
+  const saveTimer = useRef(null);
 
   useEffect(() => {
     (async () => {
@@ -18,13 +22,40 @@ export default function Respond() {
         const r = await fetch(`${FN_BASE}/fs-respond?token=${encodeURIComponent(token)}`);
         const j = await r.json();
         if (!r.ok) { setErr(j.error || "This link is not valid."); setState("error"); return; }
-        setData(j); setState("intro");
+        setData(j);
+        // Restore a saved draft (answers stay on this device until submitted)
+        try {
+          const raw = localStorage.getItem(draftKey);
+          if (raw) {
+            const d = JSON.parse(raw);
+            if (d && d.answers && Object.keys(d.answers).length > 0) {
+              setAnswers(d.answers || {});
+              setComments(d.comments || {});
+              setConsent(true);
+              setRestored(true);
+              setState("form");
+              return;
+            }
+          }
+        } catch { /* ignore a bad draft */ }
+        setState("intro");
       } catch {
         setErr("Could not load the assessment. Please check your connection and try again.");
         setState("error");
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  // Autosave the draft (debounced) whenever answers/comments change mid-form
+  useEffect(() => {
+    if (state !== "form") return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      try { localStorage.setItem(draftKey, JSON.stringify({ answers, comments, at: Date.now() })); } catch {}
+    }, 400);
+    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
+  }, [answers, comments, state, draftKey]);
 
   const total = useMemo(
     () => data ? data.questionnaire.pillars.reduce((s, p) => s + p.questions.length, 0) : 0,
@@ -51,10 +82,12 @@ export default function Respond() {
       });
       const j = await r.json();
       if (!r.ok) { setErr(j.error || "Could not submit."); setState("form"); return; }
+      try { localStorage.removeItem(draftKey); } catch {}
+      setThanks(j.thankyou_message || data?.campaign?.thankyou_message || null);
       setState("done");
       window.scrollTo({ top: 0 });
     } catch {
-      setErr("Network problem while submitting — please try again.");
+      setErr("Network problem while submitting — your answers are still saved on this device. Please try again.");
       setState("form");
     }
   }
@@ -72,7 +105,7 @@ export default function Respond() {
   if (state === "done") return (
     <div style={{ maxWidth: 560, margin: "60px auto" }} className="card">
       <h1>Thank you ✓</h1>
-      <p>Your responses have been recorded anonymously.</p>
+      <p>{thanks || "Your responses have been recorded anonymously."}</p>
       <p className="muted small">
         Results are only ever reported for groups, never for individuals, and only once
         a group has enough responses to protect anonymity.
@@ -99,6 +132,10 @@ export default function Respond() {
           if it doesn&apos;t apply to your relationship with the organisation, choose{" "}
           <b>Not applicable</b>. These are never counted against the organisation&apos;s score.
         </p>
+        <p className="muted small">
+          Your progress saves automatically on this device — you can close the page and
+          pick up where you left off using the same link.
+        </p>
         <label className="qopt" style={{ marginTop: 16 }}>
           <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
           <span className="small">
@@ -122,6 +159,13 @@ export default function Respond() {
         <div className="track"><div className="fill" style={{ width: pct + "%" }} /></div>
         <div className="lab"><span>{answered} of {total} answered</span><span>{pct}%</span></div>
       </div>
+
+      {restored ? (
+        <div className="ok">
+          Welcome back — we restored the {answered} answer{answered === 1 ? "" : "s"} you&apos;d
+          already given on this device.
+        </div>
+      ) : null}
 
       {q.pillars.map((p, pi) => (
         <section key={p.id}>
@@ -161,6 +205,9 @@ export default function Respond() {
         <button className="btn btn-primary" onClick={submit} disabled={state === "sending"}>
           {state === "sending" ? "Submitting…" : "Submit my responses"}
         </button>
+        <p className="small muted" style={{ marginTop: 8 }}>
+          Progress autosaves on this device until you submit.
+        </p>
       </div>
     </div>
   );
