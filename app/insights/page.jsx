@@ -83,6 +83,7 @@ export default function Insights() {
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           {sel ? <Link className="btn btn-ghost" href={`/campaigns/${sel}/report`}>⭱ Export report</Link> : null}
+          {sel ? <Link className="btn btn-primary" href="/insights/interventions">Recommended interventions →</Link> : null}
           <select value={sel} onChange={(e) => setSel(e.target.value)} style={{ width: "auto", fontWeight: 600 }}>
             {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
