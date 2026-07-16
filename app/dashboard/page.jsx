@@ -3,11 +3,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { sb, FN_BASE } from "../../lib/supabase";
-import { Shell, bandCls, GROUP_META, GROUP_BAR } from "../ui";
+import { Shell, bandCls, bandWord, bandOf, GROUP_META, GROUP_BAR, groupName } from "../ui";
+import { bestGaps } from "../lib/gaps";
 
 const BARRIER = { sii: "Confusion", iem: "Resistance", oic: "Anxiety", ipm: "Frustration", roi: "False Starts" };
-function bandWord(v) { return v < 40 ? "Low" : v < 70 ? "Medium" : "High"; }
-function bandOf(v) { return v < 40 ? "low" : v < 70 ? "medium" : "high"; }
 
 export default function Dashboard() {
   const router = useRouter();
@@ -41,7 +40,7 @@ export default function Dashboard() {
         if (jwt) {
           try {
             const [r, lib] = await Promise.all([
-              fetch(`${FN_BASE}/fs-results?campaign_id=${target.id}`, { headers: { Authorization: `Bearer ${jwt}` } }),
+              fetch(`${FN_BASE}/fs-results?campaign_id=${target.id}&detail=1`, { headers: { Authorization: `Bearer ${jwt}` } }),
               sb().from("fs_interventions").select("*"),
             ]);
             if (r.ok) setOverview({ campaign: target, results: await r.json(), library: lib.data || [] });
@@ -111,15 +110,15 @@ function ExecOverview({ data }) {
     }
   }
 
-  const byGroup = {};
-  for (const g of visible) byGroup[g.type] = g;
+  // Shared-question gaps across any visible pair, either direction (audit F2/F7)
+  const nameOfType = (t) => groupName(groups.find((g) => g.type === t)) || t;
+  const gapMap = bestGaps(results.questions, pillars, visible);
   const picks = [];
   for (const p of pillars) {
-    const ex = byGroup.executive?.pillars?.[p.id];
-    const em = byGroup.employee?.pillars?.[p.id];
-    if (ex != null && em != null) {
-      const e = library.find((x) => x.trigger_type === "gap" && x.pillar === p.id && ex - em >= Number(x.gap_min || 20));
-      if (e) picks.push({ p, label: `Close the ${p.short} perception gap (exec ${ex} vs employees ${em})`, service: (e.services || [])[0] });
+    const gp = gapMap[p.id];
+    if (gp) {
+      const e = library.find((x) => x.trigger_type === "gap" && x.pillar === p.id && gp.d >= Number(x.gap_min || 20));
+      if (e) picks.push({ p, label: `Close the ${p.short} perception gap (${nameOfType(gp.hiType)} ${gp.hi} vs ${nameOfType(gp.loType)} ${gp.lo})`, service: (e.services || [])[0] });
     }
   }
   if (overall) {
@@ -185,7 +184,7 @@ function ExecOverview({ data }) {
             return (
               <div key={g.id} style={{ marginBottom: 7 }}>
                 <div className="small" style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span>{GROUP_META[g.type]?.label || g.type}</span>
+                  <span>{groupName(g)}</span>
                   <span className="muted">{g.n}{g.target_n ? ` / ${g.target_n}` : ""}</span>
                 </div>
                 <div style={{ height: 7, background: "#e8e8ec", borderRadius: 99 }}>
