@@ -405,63 +405,20 @@ export default function Campaign() {
         </div>
       ) : null}
 
-      <div className="card">
-        <h2>Results by stakeholder group</h2>
-        {!results ? <p className="muted">Loading results…</p> : (
-          <>
-            <table className="t">
-              <thead>
-                <tr>
-                  <th>Group</th><th>n</th>
-                  {pillars.map((p) => <th key={p.id}>{p.short}</th>)}
-                  <th>Don&apos;t know / N-A</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(results.groups || []).map((g) => (
-                  <tr key={g.id}>
-                    <td><b>{groupName(g)}</b></td>
-                    <td>{g.n}</td>
-                    {g.suppressed ? (
-                      <td colSpan={pillars.length + 1} className="muted small">
-                        Hidden until at least {results.campaign.anonymity_threshold} responses (privacy protection)
-                      </td>
-                    ) : (
-                      <>
-                        {pillars.map((p) => (
-                          <td key={p.id} className={"score " + bandCls(g.pillars[p.id])}>
-                            {g.pillars[p.id] === null ? "—" : g.pillars[p.id]}
-                          </td>
-                        ))}
-                        <td className="small muted">{g.dkna_pct}%</td>
-                      </>
-                    )}
-                  </tr>
-                ))}
-                {results.overall && !results.overall.suppressed ? (
-                  <tr>
-                    <td><b>All groups</b></td>
-                    <td>{results.overall.n}</td>
-                    {pillars.map((p) => (
-                      <td key={p.id} className={"score " + bandCls(results.overall.pillars[p.id])}>
-                        {results.overall.pillars[p.id] === null ? "—" : results.overall.pillars[p.id]}
-                      </td>
-                    ))}
-                    <td className="small"><b>Overall {results.overall.score ?? "—"}</b></td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-            <p className="small muted" style={{ marginTop: 10 }}>
-              Scores are 0–100. Low &lt; 40 · Medium 40–69 · High 70+. Don&apos;t-know and
-              not-applicable answers are excluded from scores and tracked as a data-quality signal.
-            </p>
-          </>
-        )}
+      <div className="card" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+        <div>
+          <h2 style={{ margin: "0 0 4px" }}>Results &amp; analysis</h2>
+          <p className="small muted" style={{ margin: 0 }}>
+            {results && results.overall && !results.overall.suppressed
+              ? <>Overall <b>{results.overall.score}</b> from {results.overall.n} responses — scores, perception gaps and automatic findings live on Insights.</>
+              : "Scores, perception gaps and automatic findings live on Insights once enough responses are in."}
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Link className="btn btn-primary btn-sm" href="/insights">Open Insights →</Link>
+          <Link className="btn btn-ghost btn-sm" href="/insights/interventions">Interventions →</Link>
+        </div>
       </div>
-
-      <GapsCard results={results} />
-      <InterventionsCard results={results} library={library} />
 
       {canManage ? (
         <div className="card" style={{ maxWidth: 640 }}>
