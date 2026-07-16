@@ -48,6 +48,7 @@ export default function Campaign() {
   const [uniqGroup, setUniqGroup] = useState("");
   const [uniqCount, setUniqCount] = useState("5");
   const [addName, setAddName] = useState(null);
+  const [tEdit, setTEdit] = useState(null); // { gid, val } while editing a group target
 
   const load = useCallback(async () => {
     const { data: u } = await sb().auth.getUser();
@@ -128,6 +129,14 @@ export default function Campaign() {
     setBusy(true);
     const { error } = await sb().from("fs_links").insert({ campaign_id: id, group_id: groupId, token: randToken(), mode: "group" });
     setBusy(false);
+    if (error) setErr(error.message); else load();
+  }
+  async function saveTarget() {
+    if (!tEdit) return;
+    const val = Math.max(0, Number(tEdit.val || 0));
+    setBusy(true);
+    const { error } = await sb().from("fs_groups").update({ target_n: val }).eq("id", tEdit.gid);
+    setBusy(false); setTEdit(null);
     if (error) setErr(error.message); else load();
   }
   async function addGroup() {
@@ -257,7 +266,27 @@ export default function Campaign() {
                       </span>
                     ) : <span className="small muted">—</span>}
                   </td>
-                  <td><b>{n}</b> <span className="small muted">/ {g.target_n || "—"}</span></td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    <b>{n}</b>{" "}
+                    {tEdit?.gid === g.id ? (
+                      <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+                        <span className="small muted">/</span>
+                        <input type="text" inputMode="numeric" autoFocus value={tEdit.val}
+                          onChange={(e) => setTEdit({ gid: g.id, val: e.target.value.replace(/\D/g, "") })}
+                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); saveTarget(); } if (e.key === "Escape") setTEdit(null); }}
+                          onBlur={saveTarget}
+                          style={{ width: 56, padding: "3px 7px", fontSize: 13 }} />
+                      </span>
+                    ) : canManage ? (
+                      <button type="button" className="small muted" title="Edit the target number of people for this group"
+                        onClick={() => setTEdit({ gid: g.id, val: String(g.target_n ?? "") })}
+                        style={{ background: "none", border: "none", cursor: "pointer", padding: 0, textDecoration: "underline dotted", color: "var(--muted)" }}>
+                        / {g.target_n || "—"} ✎
+                      </button>
+                    ) : (
+                      <span className="small muted">/ {g.target_n || "—"}</span>
+                    )}
+                  </td>
                   <td>
                     <div className="cbar">
                       <div className="track"><div className="fill" style={{ width: pct + "%", background: GROUP_BAR[g.type] || "var(--primary)" }} /></div>
