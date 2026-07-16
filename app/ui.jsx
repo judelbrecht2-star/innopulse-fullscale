@@ -35,6 +35,12 @@ export const GROUP_META = {
 };
 export const GROUP_BAR = { executive: "var(--primary)", employee: "var(--teal)", customer: "var(--amber)", partner: "var(--blue)", other: "var(--violet)" };
 
+export function groupName(g) {
+  if (!g) return "";
+  if (g.type === "other") return g.label || "Other stakeholders";
+  return GROUP_META[g.type]?.label || g.type;
+}
+
 export function bandCls(v) {
   if (v === null || v === undefined) return "";
   if (v < 40) return "band-low";
