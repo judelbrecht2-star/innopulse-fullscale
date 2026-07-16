@@ -48,6 +48,43 @@ function ctx(results) {
 // Each rule: { id, title, severity 1..3, run(c) -> null | {klass, confidence, text, evidence[], alternatives, validate} }
 const RULES = [
   {
+    id: "participation_bias", title: "Participation is low enough to bias every other number", severity: 3,
+    run: (c) => {
+      const weak = Object.values(c.vis).filter((g) => g.target_n >= 5 && g.n / g.target_n < 0.5);
+      if (!weak.length) return null;
+      return {
+        klass: CLASS.OBS, confidence: "High",
+        text: `${weak.map((g) => `${g.label || g.type} reached ${Math.round((g.n / g.target_n) * 100)}% of target (${g.n}/${g.target_n})`).join("; ")}. Survey-methodology research puts healthy census-style participation at roughly 70–88%; below ~50%, the people who answer tend to be the most engaged advocates or the most frustrated critics, so every score in this report may over-weight the extremes. Read all findings for these groups as directional until coverage improves — and treat the low participation itself as a finding: people vote on whether feedback is worth giving.`,
+        evidence: weak.map((g) => `[coverage | ${g.type} | ${g.n}/${g.target_n}]`),
+        alternatives: "Unrealistic target sizes; survey window too short or badly timed; access problems (frontline staff without desks or devices).",
+        validate: "Extend the window with one sponsored reminder from the group's own leader (not HR); if participation doesn't move, ask why in the next townhall — the answer is diagnostic.",
+      };
+    },
+  },
+  {
+    id: "info_asymmetry", title: "Don't-know answers follow the hierarchy — an information-access gradient", severity: 2,
+    run: (c) => {
+      if (!c.vis.executive || !c.vis.employee) return null;
+      const shared = Object.values(c.qs).filter((q) => !q.audience || (q.audience.includes("executive") && q.audience.includes("employee")));
+      let eSum = 0, xSum = 0, n = 0;
+      for (const q of shared) {
+        const de = c.dk(q.key, "employee"), dx = c.dk(q.key, "executive");
+        if (de == null || dx == null) continue;
+        eSum += de; xSum += dx; n++;
+      }
+      if (n < 10) return null;
+      const eAvg = Math.round(eSum / n), xAvg = Math.round(xSum / n);
+      if (eAvg < 20 || eAvg - xAvg < 15) return null;
+      return {
+        klass: CLASS.OBS, confidence: "High",
+        text: `On the same ${n} questions, employees answer "Don't know" ${eAvg}% of the time against ${xAvg}% for executives. When Don't-know patterns by hierarchy like this, the survey literature reads it as information access, not disengagement: the organisation's innovation machinery is visible from the top and opaque from below. This inflates the exec–employee score gap too — part of the "disagreement" is simply that one group can see the object being rated.`,
+        evidence: [`[shared items | employee DK ${eAvg}% vs executive DK ${xAvg}% | ${n} questions]`],
+        alternatives: "Survey-taking style (employees more willing to admit uncertainty); genuinely decentralised work where corporate initiatives are irrelevant to daily roles.",
+        validate: "Publish a one-page 'how innovation works here' explainer, then re-ask five high-DK items in a pulse 60 days later — access problems move, style differences don't.",
+      };
+    },
+  },
+  {
     id: "paper_strategy", title: "Strategy exists on paper, not in people's line of sight", severity: 3,
     run: (c) => {
       if (!c.vis.employee) return null;
@@ -92,7 +129,7 @@ const RULES = [
         klass: CLASS.OBS, confidence: "High",
         text: `${d}% of employee answers on prioritisation, measurement and funding of innovation are "Don't know". This is not a negative rating — it is missing visibility. People cannot align with machinery they cannot see, and high Don't-know here typically precedes low engagement scores next cycle.`,
         evidence: [c.cite("sii_8", "employee"), c.cite("sii_9", "employee"), c.cite("sii_3", "employee")],
-        alternatives: "Genuinely new processes nobody has communicated yet; respondents from support functions distant from innovation work.",
+        alternatives: "Genuinely new processes nobody has communicated yet; respondents from support functions distant from innovation work; some Don't-know answering reflects survey shortcutting (satisficing) rather than true opacity — the validation step separates the two.",
         validate: "Check whether prioritisation criteria and innovation KPIs are published anywhere an ordinary employee can reach in under two clicks.",
       };
     },
@@ -124,7 +161,7 @@ const RULES = [
       const converging = emp != null && emp < MID;
       return {
         klass: converging ? CLASS.SUP : CLASS.HYP, confidence: converging ? "High" : "Medium",
-        text: `On "safe to take risks without blame", executives sit ${g0} points above employees${g2 != null ? ` (encouragement of experimentation shows a similar ${g2}-point gap)` : ""}${converging ? `, and the direct personal item — "I can raise an idea with my manager without it counting against me" — scores ${emp}` : ""}. Psychological safety is rated by those who grant it, experienced by those who need it; here the two accounts diverge.`,
+        text: `On "safe to take risks without blame", executives sit ${g0} points above employees${g2 != null ? ` (encouragement of experimentation shows a similar ${g2}-point gap)` : ""}${converging ? `, and the direct personal item — "I can raise an idea with my manager without it counting against me" — scores ${emp}` : ""}. This is the classic leader blind spot documented in psychological-safety research: safety is judged by those who grant it but experienced by those who need it, and people lower in a status hierarchy find speaking up hardest — so a team can look engaged while members sit on concerns they would never raise. Expect the survey itself to under-state the problem for the same reason.`,
         evidence: [c.cite("iem_0", "executive"), c.cite("iem_0", "employee"), converging ? c.cite("iem_em0", "employee") : c.cite("iem_2", "employee")].filter(Boolean),
         alternatives: "A single team's bad experience dominating a small sample; a recent restructuring making all risk feel personal; executives answering about formal policy rather than behaviour.",
         validate: "In the next three leadership meetings, count who challenges an idea and what happens to them. Run skip-level listening sessions with no managers present.",
