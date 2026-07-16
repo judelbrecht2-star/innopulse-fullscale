@@ -3,11 +3,10 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { sb, FN_BASE } from "../../../lib/supabase";
-import { Shell, I } from "../../ui";
+import { Shell, I, bandWord, bandOf, groupName } from "../../ui";
+import { bestGaps, MIN_N } from "../../lib/gaps";
 
 const PILLAR_ICON = { sii: "chart", iem: "people", oic: "person", ipm: "gear", roi: "pie" };
-function bandWord(v) { return v < 40 ? "Low" : v < 70 ? "Medium" : "High"; }
-function bandOf(v) { return v < 40 ? "low" : v < 70 ? "medium" : "high"; }
 function csvEsc(v) { const s = String(v ?? ""); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
 
 export default function Interventions() {
@@ -42,7 +41,7 @@ export default function Interventions() {
       const jwt = sess.session?.access_token;
       try {
         const [r, lib] = await Promise.all([
-          fetch(`${FN_BASE}/fs-results?campaign_id=${target.id}`, { headers: { Authorization: `Bearer ${jwt}` } }),
+          fetch(`${FN_BASE}/fs-results?campaign_id=${target.id}&detail=1`, { headers: { Authorization: `Bearer ${jwt}` } }),
           sb().from("fs_interventions").select("*"),
         ]);
         if (r.ok) setResults(await r.json());
@@ -58,17 +57,16 @@ export default function Interventions() {
   const pillars = results.pillars || [];
   const pillarById = Object.fromEntries(pillars.map((p) => [p.id, p]));
   const visible = (results.groups || []).filter((g) => !g.suppressed);
-  const byType = Object.fromEntries(visible.map((g) => [g.type, g]));
   const overall = results.overall && !results.overall.suppressed ? results.overall : null;
-  const ex = byType.executive, em = byType.employee;
+  const nameOfType = (t) => groupName((results.groups || []).find((g) => g.type === t)) || t;
 
-  // gap priorities (executive vs employee — the engine's flagship pair)
+  // F2 + F7: largest reliable shared-question gap per pillar, any pair, either direction
+  const gapMap = bestGaps(results.questions, pillars, visible);
   const gaps = pillars.map((p) => {
-    const a = ex?.pillars?.[p.id], b = em?.pillars?.[p.id];
-    if (a == null || b == null) return null;
-    const d = Math.round(Math.abs(a - b) * 10) / 10;
-    const entry = library.find((e) => e.trigger_type === "gap" && e.pillar === p.id && Math.abs(a - b) >= Number(e.gap_min || 20));
-    return entry ? { p, exv: a, emv: b, d, entry } : null;
+    const e = gapMap[p.id];
+    if (!e) return null;
+    const entry = library.find((x) => x.trigger_type === "gap" && x.pillar === p.id && e.d >= Number(x.gap_min || 20));
+    return entry ? { p, ...e, hiName: nameOfType(e.hiType), loName: nameOfType(e.loType), entry } : null;
   }).filter(Boolean).sort((x, y) => y.d - x.d);
 
   // baseline band opportunities (overall pillars, weakest first, excluding high band)
@@ -78,6 +76,8 @@ export default function Interventions() {
     .sort((a, b) => a.v - b.v)
     .map(({ p, v }) => ({ p, v, entry: library.find((e) => e.trigger_type === "band" && e.pillar === p.id && e.band === bandOf(v)) }))
     .filter((o) => o.entry) : [];
+
+  const smallGroups = visible.filter((g) => g.n < MIN_N);
 
   const sel = selPillar
     || (gaps.length ? { kind: "gap", id: gaps[0].p.id } : (opps.length ? { kind: "band", id: opps[0].p.id } : null));
@@ -148,17 +148,17 @@ export default function Interventions() {
     setMsEdit(null); setBusy(false);
   }
   function exportRoadmap() {
-    const rows = [["Priority", "Type", "Pillar", "Action / milestone", "Status", "Owner", "Horizon", "Measure", "ISO readiness", "Services"]];
+    const rows = [["Priority", "Type", "Pillar", "Groups compared", "Action / milestone", "Status", "Owner", "Horizon", "Measure", "ISO readiness", "Services"]];
     gaps.forEach((g, gi) => (g.entry.actions || []).forEach((t, i) => {
       const a = actions.find((x) => x.intervention_id === g.entry.id && x.action_index === i);
-      rows.push([gi + 1, "Perception gap", g.p.short, t, a?.status || "not_started", a?.owner || g.entry.owner_suggestion, g.entry.horizon, g.entry.kpi, g.entry.iso_map, (g.entry.services || []).join("; ")]);
+      rows.push([gi + 1, "Perception gap", g.p.short, `${g.hiName} ${g.hi} vs ${g.loName} ${g.lo} (${g.items} shared Qs)`, t, a?.status || "not_started", a?.owner || g.entry.owner_suggestion, g.entry.horizon, g.entry.kpi, g.entry.iso_map, (g.entry.services || []).join("; ")]);
     }));
     opps.forEach((o) => (o.entry.actions || []).forEach((t, i) => {
       const a = actions.find((x) => x.intervention_id === o.entry.id && x.action_index === i);
-      rows.push(["—", `Band (${bandWord(o.v)})`, o.p.short, t, a?.status || "not_started", a?.owner || o.entry.owner_suggestion, o.entry.horizon, o.entry.kpi, o.entry.iso_map, (o.entry.services || []).join("; ")]);
+      rows.push(["—", `Band (${bandWord(o.v)})`, o.p.short, "All groups", t, a?.status || "not_started", a?.owner || o.entry.owner_suggestion, o.entry.horizon, o.entry.kpi, o.entry.iso_map, (o.entry.services || []).join("; ")]);
     }));
     actions.filter((a) => a.is_milestone).forEach((a) => {
-      rows.push(["—", "Milestone", pillarById[a.pillar]?.short || a.pillar, a.title, a.status, a.owner || "", "", "", "", ""]);
+      rows.push(["—", "Milestone", pillarById[a.pillar]?.short || a.pillar, "", a.title, a.status, a.owner || "", "", "", "", ""]);
     });
     const csv = rows.map((r) => r.map(csvEsc).join(",")).join("\r\n");
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
@@ -176,7 +176,7 @@ export default function Interventions() {
       <div className="pagehead">
         <div>
           <h1>Recommended interventions</h1>
-          <p className="lead">Drawn from the approved InnoPulse intervention library — triggered by this campaign&apos;s scores and stakeholder gaps, not generated ad hoc.</p>
+          <p className="lead">Drawn from the approved InnoPulse intervention library — triggered by this campaign&apos;s scores and stakeholder gaps (compared on shared questions only), not generated ad hoc.</p>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button className="btn btn-ghost" onClick={exportRoadmap}>⭱ Export roadmap</button>
@@ -193,7 +193,7 @@ export default function Interventions() {
         </div></div>
         <div className="stat"><span className="ic c-red"><I.chart /></span><div>
           <div className="k">Highest gap</div><div className="v">{gaps[0] ? `${gaps[0].d} pts` : "—"}</div>
-          <span className="small muted">{gaps[0]?.p.short || "needs exec + employee data"}</span>
+          <span className="small muted">{gaps[0] ? `${gaps[0].p.short} · ${gaps[0].hiName} vs ${gaps[0].loName}` : "needs two comparable groups"}</span>
         </div></div>
         <div className="stat"><span className="ic c-teal"><I.doc /></span><div>
           <div className="k">Recommended horizon</div><div className="v">{horizonBig ? `${horizonBig} days` : "—"}</div>
@@ -205,8 +205,15 @@ export default function Interventions() {
         </div></div>
       </div>
 
+      {smallGroups.length ? (
+        <p className="small" style={{ margin: "0 0 14px", color: "var(--amber, #b7791f)" }}>
+          ⚠ Small samples ({smallGroups.map((g) => `${groupName(g)} n=${g.n}`).join(", ")}) — treat gap-driven
+          priorities as indicative until groups reach {MIN_N}+ responses.
+        </p>
+      ) : null}
+
       {!cur ? (
-        <div className="card"><p className="muted">Recommendations appear once enough responses are in (the gap view needs both executives and employees above the threshold).</p></div>
+        <div className="card"><p className="muted">Recommendations appear once at least two stakeholder groups clear the anonymity threshold with enough shared questions to compare fairly.</p></div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0,2fr) minmax(280px,1fr)", gap: 18, alignItems: "start" }} className="ivgrid">
           <style>{`@media(max-width:1020px){.ivgrid{grid-template-columns:1fr!important}}`}</style>
@@ -219,17 +226,19 @@ export default function Interventions() {
                 <span className={"pill " + (sel.kind === "gap" ? "closed" : "draft")} style={{ textTransform: "uppercase" }}>
                   {sel.kind === "gap" ? "Perception gap" : `${bandWord(cur.v)} band`}
                 </span>
-                {sel.kind === "gap" ? <span className="small muted">Executives {cur.exv} vs Employees {cur.emv}</span> : <span className="small muted">Overall {cur.v}</span>}
+                {sel.kind === "gap"
+                  ? <span className="small muted">{cur.hiName} {cur.hi} vs {cur.loName} {cur.lo} · {cur.items} shared questions</span>
+                  : <span className="small muted">Overall {cur.v}</span>}
               </div>
 
               {sel.kind === "gap" ? (
                 <div style={{ display: "flex", alignItems: "center", gap: 14, margin: "16px 0 6px" }}>
-                  <span className="small" style={{ fontWeight: 800, color: "var(--band-low)" }}>Employees {Math.min(cur.emv, cur.exv)}</span>
+                  <span className="small" style={{ fontWeight: 800, color: "var(--band-low)" }}>{cur.loName} {cur.lo}</span>
                   <div className="gbar">
-                    <span className="cap" style={{ left: Math.min(cur.emv, cur.exv) + "%", background: "var(--primary)" }} />
-                    <span className="cap" style={{ left: Math.max(cur.emv, cur.exv) + "%", background: "var(--band-high)" }} />
+                    <span className="cap" style={{ left: cur.lo + "%", background: "var(--primary)" }} />
+                    <span className="cap" style={{ left: cur.hi + "%", background: "var(--band-high)" }} />
                   </div>
-                  <span className="small" style={{ fontWeight: 800, color: "var(--band-high)" }}>Executives {Math.max(cur.emv, cur.exv)}</span>
+                  <span className="small" style={{ fontWeight: 800, color: "var(--band-high)" }}>{cur.hiName} {cur.hi}</span>
                   <span style={{ fontWeight: 800, fontSize: 22, color: "var(--primary)", whiteSpace: "nowrap" }}>{cur.d}<div className="small muted" style={{ fontWeight: 600 }}>point gap</div></span>
                 </div>
               ) : null}
@@ -267,12 +276,12 @@ export default function Interventions() {
                   <div className="prow" key={g.p.id} onClick={() => setSelPillar({ kind: "gap", id: g.p.id })}>
                     <span className="numchip sm">{gi + 1}</span>
                     <span className="nm">{g.p.short}</span>
-                    <span className="small muted">Employees</span><span className="v" style={{ color: "var(--band-low)" }}>{Math.min(g.emv, g.exv)}</span>
+                    <span className="small muted">{g.loName}</span><span className="v" style={{ color: "var(--band-low)" }}>{g.lo}</span>
                     <div className="gbar" style={{ maxWidth: 220 }}>
-                      <span className="cap" style={{ left: Math.min(g.emv, g.exv) + "%", background: "var(--primary)", width: 10, height: 10 }} />
-                      <span className="cap" style={{ left: Math.max(g.emv, g.exv) + "%", background: "var(--band-high)", width: 10, height: 10 }} />
+                      <span className="cap" style={{ left: g.lo + "%", background: "var(--primary)", width: 10, height: 10 }} />
+                      <span className="cap" style={{ left: g.hi + "%", background: "var(--band-high)", width: 10, height: 10 }} />
                     </div>
-                    <span className="small muted">Executives</span><span className="v">{Math.max(g.emv, g.exv)}</span>
+                    <span className="small muted">{g.hiName}</span><span className="v">{g.hi}</span>
                     <span className="pts">{g.d} pts</span>
                     <span className="pill draft">{g.entry.impact || "High"} impact</span>
                     <span className="muted">›</span>
