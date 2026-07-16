@@ -2,11 +2,8 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { sb, FN_BASE } from "../../../../lib/supabase";
-import { Shell } from "../../../ui";
-
-const GROUP_LABEL = { executive: "Executives", employee: "Employees", customer: "Customers", partner: "Partners" };
-function bandOf(v) { return v < 40 ? "low" : v < 70 ? "medium" : "high"; }
-function bandWord(v) { return v < 40 ? "Low" : v < 70 ? "Medium" : "High"; }
+import { Shell, bandWord, bandOf, groupName } from "../../../ui";
+import { bestGaps, MIN_N } from "../../../lib/gaps";
 
 export default function Report() {
   const { id } = useParams();
@@ -39,33 +36,30 @@ export default function Report() {
   const pillars = data.pillars || [];
   const visible = (data.groups || []).filter((g) => !g.suppressed);
   const overall = data.overall && !data.overall.suppressed ? data.overall : null;
+  const nameOfType = (t) => groupName((data.groups || []).find((g) => g.type === t)) || t; // F9: custom names flow through
+  const smallGroups = visible.filter((g) => g.n < MIN_N);
 
-  // gaps
-  const gapRows = pillars.map((p) => {
-    const entries = visible.map((g) => ({ type: g.type, v: g.pillars?.[p.id] })).filter((e) => e.v != null);
-    if (entries.length < 2) return null;
-    const hi = entries.reduce((a, b) => (b.v > a.v ? b : a));
-    const lo = entries.reduce((a, b) => (b.v < a.v ? b : a));
-    return { p, spread: Math.round((hi.v - lo.v) * 10) / 10, hi, lo };
-  }).filter(Boolean).sort((a, b) => b.spread - a.spread);
+  // F2: gaps on shared questions only, any pair, either direction
+  const gapMap = bestGaps(data.questions, pillars, visible);
+  const gapRows = pillars
+    .map((p) => ({ p, e: gapMap[p.id] || null }))
+    .filter((r) => r.e)
+    .sort((a, b) => b.e.d - a.e.d);
 
-  // interventions (same engine as the campaign page)
-  const byGroup = {};
-  for (const g of visible) byGroup[g.type] = g;
+  // interventions (same generalized engine as the campaign page)
   const picks = [];
   for (const p of pillars) {
-    const ex = byGroup.executive?.pillars?.[p.id];
-    const em = byGroup.employee?.pillars?.[p.id];
-    if (ex != null && em != null) {
-      const gapEntry = library.find((e) => e.trigger_type === "gap" && e.pillar === p.id && ex - em >= Number(e.gap_min || 20));
-      if (gapEntry) picks.push({ entry: gapEntry, p, why: `Executives ${ex} vs employees ${em}` });
+    const gp = gapMap[p.id];
+    if (gp) {
+      const gapEntry = library.find((e) => e.trigger_type === "gap" && e.pillar === p.id && gp.d >= Number(e.gap_min || 20));
+      if (gapEntry) picks.push({ entry: gapEntry, p, why: `${nameOfType(gp.hiType)} ${gp.hi} vs ${nameOfType(gp.loType)} ${gp.lo} on ${gp.items} shared questions` });
     }
   }
   if (overall) {
     const ranked = pillars.map((p) => ({ p, v: overall.pillars?.[p.id] })).filter((x) => x.v != null).sort((a, b) => a.v - b.v);
     for (const { p, v } of ranked.slice(0, 3)) {
       const e = library.find((x) => x.trigger_type === "band" && x.pillar === p.id && x.band === bandOf(v));
-      if (e) picks.push({ entry: e, p, why: `${p.short} scored ${v}` });
+      if (e && !picks.some((k) => k.entry.id === e.id)) picks.push({ entry: e, p, why: `${p.short} scored ${v}` });
     }
   }
 
@@ -137,7 +131,7 @@ export default function Report() {
           <tbody>
             {(data.groups || []).map((g) => (
               <tr key={g.id}>
-                <td><b>{GROUP_LABEL[g.type] || g.type}</b></td>
+                <td><b>{groupName(g)}</b></td>
                 <td>{g.n}</td>
                 {g.suppressed
                   ? <td colSpan={pillars.length + 1} className="muted small">Suppressed — below the anonymity threshold of {data.campaign.anonymity_threshold}</td>
@@ -146,24 +140,36 @@ export default function Report() {
             ))}
           </tbody>
         </table>
+        <p className="small muted" style={{ margin: "8px 0 0" }}>
+          Each group&apos;s scores cover the questions that group was asked. The gap table
+          below compares groups on shared questions only.
+        </p>
       </div>
 
       <div className="rcard">
         <h2 style={{ margin: "0 0 8px", fontSize: 16 }}>Stakeholder perception gaps</h2>
-        {gapRows.length === 0 ? <p className="small muted">Not enough visible groups yet to compare.</p> : (
-          <table>
-            <thead><tr><th>Pillar</th><th>Highest</th><th>Lowest</th><th>Spread</th></tr></thead>
-            <tbody>
-              {gapRows.map(({ p, spread, hi, lo }) => (
-                <tr key={p.id}>
-                  <td>{p.short}</td>
-                  <td>{GROUP_LABEL[hi.type]} · <b>{hi.v}</b></td>
-                  <td>{GROUP_LABEL[lo.type]} · <b>{lo.v}</b></td>
-                  <td><b>{spread}</b>{spread >= 20 ? " ⚠" : ""}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {gapRows.length === 0 ? <p className="small muted">Not enough visible groups (or shared questions) yet to compare fairly.</p> : (
+          <>
+            <table>
+              <thead><tr><th>Pillar</th><th>Higher</th><th>Lower</th><th>Shared Qs</th><th>Gap</th></tr></thead>
+              <tbody>
+                {gapRows.map(({ p, e }) => (
+                  <tr key={p.id}>
+                    <td>{p.short}</td>
+                    <td>{nameOfType(e.hiType)} · <b>{e.hi}</b></td>
+                    <td>{nameOfType(e.loType)} · <b>{e.lo}</b></td>
+                    <td className="small muted">{e.items}</td>
+                    <td><b>{e.d}</b>{e.d >= 20 ? " ⚠" : ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="small muted" style={{ margin: "8px 0 0" }}>
+              Gaps are computed only on questions both groups answered, so they reflect
+              perception differences rather than questionnaire design.
+              {smallGroups.length ? ` Small samples (${smallGroups.map((g) => `${groupName(g)} n=${g.n}`).join(", ")}) — differences below ${MIN_N} respondents per group are indicative.` : ""}
+            </p>
+          </>
         )}
       </div>
 
