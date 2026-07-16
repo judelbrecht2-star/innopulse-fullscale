@@ -92,31 +92,31 @@ export default function Respond() {
     }
   }
 
-  if (state === "loading") return <p className="muted">Loading…</p>;
+  if (state === "loading") return <div className="rshell"><p className="muted">Loading…</p></div>;
 
   if (state === "error") return (
-    <div style={{ maxWidth: 560, margin: "60px auto" }} className="card">
+    <div className="rshell"><div style={{ maxWidth: 560, margin: "60px auto" }} className="card">
       <h1>Assessment unavailable</h1>
       <p>{err}</p>
       <p className="muted small">If you believe this is a mistake, contact the person who sent you the link.</p>
-    </div>
+    </div></div>
   );
 
   if (state === "done") return (
-    <div style={{ maxWidth: 560, margin: "60px auto" }} className="card">
+    <div className="rshell"><div style={{ maxWidth: 560, margin: "60px auto" }} className="card">
       <h1>Thank you ✓</h1>
       <p>{thanks || "Your responses have been recorded anonymously."}</p>
       <p className="muted small">
         Results are only ever reported for groups, never for individuals, and only once
         a group has enough responses to protect anonymity.
       </p>
-    </div>
+    </div></div>
   );
 
   const q = data.questionnaire;
 
   if (state === "intro") return (
-    <div style={{ maxWidth: 640, margin: "40px auto" }}>
+    <div className="rshell"><div style={{ maxWidth: 640, margin: "40px auto" }}>
       <div className="card">
         <div className="small muted" style={{ marginBottom: 6 }}>
           {data.org?.name} · {data.campaign?.name}
@@ -149,12 +149,12 @@ export default function Respond() {
           </button>
         </div>
       </div>
-    </div>
+    </div></div>
   );
 
   // form
   return (
-    <div style={{ maxWidth: 760, margin: "0 auto" }}>
+    <div className="rshell"><div style={{ maxWidth: 760, margin: "0 auto" }}>
       <div className="progressbar">
         <div className="track"><div className="fill" style={{ width: pct + "%" }} /></div>
         <div className="lab"><span>{answered} of {total} answered</span><span>{pct}%</span></div>
@@ -209,6 +209,6 @@ export default function Respond() {
           Progress autosaves on this device until you submit.
         </p>
       </div>
-    </div>
+    </div></div>
   );
 }
