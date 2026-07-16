@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { sb } from "../../lib/supabase";
-import { TopBar } from "../ui";
+import { Shell } from "../ui";
 
 export default function Account() {
   const router = useRouter();
@@ -35,8 +35,7 @@ export default function Account() {
 
   if (!user) return <p className="muted">Loading…</p>;
   return (
-    <>
-      <TopBar user={user} />
+    <Shell active="settings" user={user}>
       <h1>Account</h1>
       <div className="card" style={{ maxWidth: 480 }}>
         <h2>Change password</h2>
@@ -54,6 +53,6 @@ export default function Account() {
         </form>
       </div>
       <p className="small muted">Multi-factor authentication is on the roadmap for the next phase.</p>
-    </>
+    </Shell>
   );
 }
