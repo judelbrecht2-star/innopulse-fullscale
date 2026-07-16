@@ -14,6 +14,7 @@ export default function Respond() {
   const [restored, setRestored] = useState(false);
   const [thanks, setThanks] = useState(null);
   const draftKey = "fs_draft_" + token;
+  const doneKey = "fs_done_" + token;
   const saveTimer = useRef(null);
   const lastBeacon = useRef(0);
   const refKey = "fs_ref_" + token;
@@ -47,6 +48,14 @@ export default function Respond() {
         const j = await r.json();
         if (!r.ok) { setErr(j.error || "This link is not valid."); setState("error"); return; }
         setData(j);
+        // Soft duplicate guard: this device already submitted for this link (F5)
+        try {
+          if (localStorage.getItem(doneKey)) {
+            setThanks("You've already submitted from this device — thank you again.");
+            setState("done");
+            return;
+          }
+        } catch { /* ignore */ }
         // Restore a saved draft (answers stay on this device until submitted)
         try {
           const raw = localStorage.getItem(draftKey);
@@ -106,8 +115,14 @@ export default function Respond() {
         body: JSON.stringify({ token, answers, comments, consent: true, ref: clientRef() }),
       });
       const j = await r.json();
+      if (r.status === 409) {
+        // Server-side duplicate guard fired — treat as already submitted
+        try { localStorage.setItem(doneKey, "1"); localStorage.removeItem(draftKey); } catch {}
+        setThanks("You'd already submitted from this device — your earlier response is safely recorded.");
+        setState("done"); window.scrollTo({ top: 0 }); return;
+      }
       if (!r.ok) { setErr(j.error || "Could not submit."); setState("form"); return; }
-      try { localStorage.removeItem(draftKey); } catch {}
+      try { localStorage.setItem(doneKey, "1"); localStorage.removeItem(draftKey); } catch {}
       setThanks(j.thankyou_message || data?.campaign?.thankyou_message || null);
       setState("done");
       window.scrollTo({ top: 0 });
@@ -130,10 +145,13 @@ export default function Respond() {
   if (state === "done") return (
     <div className="rshell"><div style={{ maxWidth: 560, margin: "60px auto" }} className="card">
       <h1>Thank you ✓</h1>
-      <p>{thanks || "Your responses have been recorded anonymously."}</p>
+      <p>{thanks || "Your responses have been recorded."}</p>
       <p className="muted small">
-        Results are only ever reported for groups, never for individuals, and only once
-        a group has enough responses to protect anonymity.
+        No name or email is stored with your answers. Reports and dashboards only ever show
+        group results, and a group stays hidden until enough people have responded. Your
+        individual answers and written comments are visible only to the organisation&apos;s
+        small assessment team for data-quality checks — never to your colleagues or managers
+        in any report.
       </p>
     </div></div>
   );
@@ -164,8 +182,10 @@ export default function Respond() {
         <label className="qopt" style={{ marginTop: 16 }}>
           <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
           <span className="small">
-            I consent to my anonymous responses being used to assess this organisation&apos;s
-            innovation health. No name or email is collected with my answers.
+            I consent to my responses being used to assess this organisation&apos;s innovation
+            health. No name or email is collected. Reports only ever show group results
+            (hidden until enough people respond); my individual answers are visible only to
+            the organisation&apos;s assessment team for data-quality checks.
           </span>
         </label>
         <div style={{ marginTop: 16 }}>
