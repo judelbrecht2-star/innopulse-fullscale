@@ -63,9 +63,12 @@ export default function Responses() {
     setErr(""); setChecks({}); setDrawer(null);
     const c = campaigns.find((x) => x.id === cid) || null;
     setCampaign(c);
-    // F8: role scoped to THIS campaign's org, not an arbitrary membership
+    // F8: the caller's OWN role in THIS campaign's org
     if (c?.org_id) {
-      const { data: mem } = await sb().from("fs_memberships").select("role").eq("org_id", c.org_id).maybeSingle();
+      const { data: uu } = await sb().auth.getUser();
+      const { data: mem } = uu?.user
+        ? await sb().from("fs_memberships").select("role").eq("org_id", c.org_id).eq("user_id", uu.user.id).maybeSingle()
+        : { data: null };
       setRole(mem?.role || "");
     }
     const [{ data: gs }, { data: ls }, { data: rs }, { data: pg }, { data: qv }] = await Promise.all([
