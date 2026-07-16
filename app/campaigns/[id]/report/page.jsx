@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { sb, FN_BASE } from "../../../../lib/supabase";
 import { Shell, bandWord, bandOf, groupName } from "../../../ui";
 import { bestGaps, MIN_N } from "../../../lib/gaps";
+import { evaluateFindings } from "../../../lib/findings";
 
 export default function Report() {
   const { id } = useParams();
@@ -172,6 +173,29 @@ export default function Report() {
           </>
         )}
       </div>
+
+      {(() => {
+        const findings = evaluateFindings(data);
+        return findings.length ? (
+          <div className="rcard">
+            <h2 style={{ margin: "0 0 8px", fontSize: 16 }}>Automatic findings</h2>
+            <p className="small muted" style={{ margin: "0 0 8px" }}>
+              Pattern-based conclusions generated from this campaign&apos;s answers. Each cites its evidence;
+              classes distinguish observed facts from supported interpretations and hypotheses still to validate.
+            </p>
+            {findings.map((f) => (
+              <div key={f.id} style={{ borderTop: "1px solid var(--line)", padding: "10px 0" }}>
+                <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 14 }}>
+                  {f.title} <span className="muted small">({f.klass} · confidence {f.confidence})</span>
+                </p>
+                <p className="small" style={{ margin: "0 0 4px", lineHeight: 1.55 }}>{f.text}</p>
+                <p className="small muted" style={{ margin: "0 0 4px" }}>{f.evidence.join("  ")}</p>
+                <p className="small muted" style={{ margin: 0 }}><b>Validate:</b> {f.validate}</p>
+              </div>
+            ))}
+          </div>
+        ) : null;
+      })()}
 
       <div className="rcard">
         <h2 style={{ margin: "0 0 8px", fontSize: 16 }}>Recommended interventions</h2>
