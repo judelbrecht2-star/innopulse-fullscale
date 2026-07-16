@@ -146,6 +146,36 @@ label.f{display:block;font-size:12.5px;font-weight:700;margin:14px 0 6px;color:#
 .axis .ticks{display:flex;justify-content:space-between}
 .legend-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:1px}
 
+/* responses control centre */
+.pill.teal{background:var(--teal-soft);color:var(--band-med)}
+.pill.violet{background:var(--violet-soft);color:var(--violet)}
+.covrow{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}
+.covrow:last-child{border-bottom:none}
+.covrow .nm{width:170px;flex:0 0 170px;display:flex;align-items:center;gap:10px;font-weight:700;font-size:14px}
+.covrow .frac{width:64px;flex:0 0 64px;font-size:13px;color:var(--muted)}
+.covrow .bar{flex:1;height:8px;background:#e8e8ec;border-radius:99px;overflow:hidden}
+.covrow .bar i{display:block;height:100%;border-radius:99px}
+.covrow .pct{width:44px;text-align:right;font-weight:700;font-size:13px}
+.privnote{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;white-space:nowrap}
+.bulkbar{position:sticky;bottom:12px;display:flex;gap:8px;align-items:center;background:var(--sidebar);
+  color:#fff;border-radius:12px;padding:10px 16px;box-shadow:0 8px 24px rgba(20,20,25,.25);z-index:30}
+.bulkbar .n{font-weight:800;margin-right:6px}
+.bulkbar button{background:#2e2e33;color:#fff;border:none;border-radius:8px;padding:8px 13px;
+  font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+.bulkbar button:hover{background:#3a3a40}
+.bulkbar button.danger{background:var(--primary)}
+.drawer-overlay{position:fixed;inset:0;background:rgba(20,20,25,.30);z-index:60}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(520px,94vw);background:#fff;z-index:61;
+  box-shadow:-12px 0 40px rgba(20,20,25,.18);padding:24px 26px;overflow-y:auto}
+.drawer h2{font-size:19px}
+.vbanner{background:#fdf6dd;border:1px solid #f3e3ae;border-radius:10px;padding:10px 14px;
+  font-size:13px;display:flex;gap:8px;align-items:center;margin:12px 0}
+.vcard{border:1px solid var(--line);border-radius:12px;padding:13px 15px;margin-bottom:10px}
+.vcard .ph{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px}
+.vcard .pn{font-weight:700;font-size:13.5px}
+.vcard .tag{font-size:10px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.vcard p{margin:0;font-size:13.5px}
+
 /* action-plan (interventions) page */
 .numchip{width:34px;height:34px;border-radius:9px;background:var(--primary);color:#fff;
   display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;flex:0 0 34px}

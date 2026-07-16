@@ -59,7 +59,7 @@ export function Shell({ active, user, children }) {
   const nav = [
     { id: "overview", label: "Overview", href: "/dashboard", icon: I.home },
     { id: "campaigns", label: "Campaigns", href: "/campaigns", icon: I.rocket },
-    { id: "responses", label: "Responses", soon: true, icon: I.chat },
+    { id: "responses", label: "Responses", href: "/responses", icon: I.chat },
     { id: "insights", label: "Insights", href: "/insights", icon: I.chart },
     { id: "reports", label: "Reports", soon: true, icon: I.doc },
     { id: "settings", label: "Settings", href: "/account", icon: I.gear },
