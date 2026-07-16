@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { sb, FN_BASE } from "../../lib/supabase";
 import { Shell, I, GROUP_META, GROUP_BAR, groupName } from "../ui";
+import { sharedPillarScores, MIN_ITEMS, MIN_N } from "../lib/gaps";
 
-function bandWord(v) { return v < 40 ? "Medium" && (v < 40 ? "Low" : "Medium") : v < 70 ? "Medium" : "High"; }
 function bandChip(v) { return v == null ? "" : v < 40 ? "low" : v < 70 ? "med" : "high"; }
 
 export default function Insights() {
@@ -38,7 +38,7 @@ export default function Insights() {
     const jwt = sess.session?.access_token;
     if (!jwt) return;
     try {
-      const r = await fetch(`${FN_BASE}/fs-results?campaign_id=${cid}`, { headers: { Authorization: `Bearer ${jwt}` } });
+      const r = await fetch(`${FN_BASE}/fs-results?campaign_id=${cid}&detail=1`, { headers: { Authorization: `Bearer ${jwt}` } });
       if (!r.ok) { setErr("Could not load results for this campaign."); return; }
       setResults(await r.json());
     } catch { setErr("Could not load results for this campaign."); }
@@ -67,12 +67,14 @@ export default function Insights() {
   }, [results]);
 
   const A = visByType[gA], B = visByType[gB];
-  const gapRows = pillars.map((p) => {
-    const a = A?.pillars?.[p.id], b = B?.pillars?.[p.id];
-    if (a == null || b == null) return { p, a, b, d: null };
-    return { p, a, b, d: Math.round(Math.abs(a - b) * 10) / 10 };
-  });
-  const biggest = gapRows.filter((r) => r.d != null).sort((x, y) => y.d - x.d)[0] || null;
+
+  // F2: compare the pair ONLY on questions both groups answered
+  const shared = results ? sharedPillarScores(results.questions, pillars, gA, gB) : {};
+  const gapRows = pillars.map((p) => ({ p, ...(shared[p.id] || { a: null, b: null, d: null, items: 0 }) }));
+  const sharedTotal = gapRows.reduce((s, r) => s + (r.items || 0), 0);
+  const reliable = gapRows.filter((r) => r.d != null && r.items >= MIN_ITEMS);
+  const biggest = reliable.sort((x, y) => y.d - x.d)[0] || null;
+  const smallSample = A && B && (A.n < MIN_N || B.n < MIN_N);
 
   return (
     <Shell active="insights" user={user}>
@@ -105,8 +107,10 @@ export default function Insights() {
         </div></div>
         <div className="stat"><span className="ic c-red"><I.info /></span><div>
           <div className="k">Largest perception gap</div>
-          <div className="v">{biggest && biggest.d != null ? `${biggest.d} pts` : "—"}</div>
-          {biggest && biggest.d != null ? <span className="small muted">{biggest.p.short} · {nameOfType(gA)} vs {nameOfType(gB)}</span> : <span className="small muted">needs two visible groups</span>}
+          <div className="v">{biggest ? `${biggest.d} pts` : "—"}</div>
+          {biggest
+            ? <span className="small muted">{biggest.p.short} · {nameOfType(gA)} vs {nameOfType(gB)} · {biggest.items} shared Qs</span>
+            : <span className="small muted">needs two visible groups with {MIN_ITEMS}+ shared questions</span>}
         </div></div>
       </div>
 
@@ -128,7 +132,7 @@ export default function Insights() {
           <p className="small" style={{ margin: "8px 0 12px" }}>
             <span className="legend-dot" style={{ background: GROUP_BAR[gA] }} />{nameOfType(gA)}
             <span className="legend-dot" style={{ background: GROUP_BAR[gB], marginLeft: 16 }} />{nameOfType(gB)}
-            <span className="muted" style={{ marginLeft: 16 }}>Δ = point difference per pillar</span>
+            <span className="muted" style={{ marginLeft: 16 }}>Δ = point difference on the {sharedTotal} question{sharedTotal === 1 ? "" : "s"} both groups answered</span>
           </p>
           {!A || !B ? (
             <p className="muted small">
@@ -137,12 +141,12 @@ export default function Insights() {
             </p>
           ) : (
             <>
-              {gapRows.map(({ p, a, b, d }) => {
+              {gapRows.map(({ p, a, b, d, items }) => {
                 if (a == null || b == null) return (
                   <div className="dumb" key={p.id}>
                     <div className="plabel">{p.short}</div>
                     <div /><div className="trackwrap"><div className="track" /></div><div />
-                    <div className="delta muted">—</div>
+                    <div className="delta muted">no shared Qs</div>
                   </div>
                 );
                 const lo = Math.min(a, b), hi = Math.max(a, b);
@@ -150,7 +154,7 @@ export default function Insights() {
                 const hiColor = a <= b ? GROUP_BAR[gB] : GROUP_BAR[gA];
                 return (
                   <div className="dumb" key={p.id}>
-                    <div className="plabel">{p.short}</div>
+                    <div className="plabel">{p.short}{items < MIN_ITEMS ? <span className="small muted" title={`Only ${items} shared question${items === 1 ? "" : "s"} — treat as indicative`}> *</span> : null}</div>
                     <div className="val" style={{ color: loColor }}>{lo}</div>
                     <div className="trackwrap">
                       <div className="track" />
@@ -159,11 +163,20 @@ export default function Insights() {
                       <div className="dot" style={{ left: hi + "%", background: hiColor }} />
                     </div>
                     <div className="val right" style={{ color: hiColor }}>{hi}</div>
-                    <div className="delta">Δ {d} pts</div>
+                    <div className="delta">Δ {d} pts{items < MIN_ITEMS ? " *" : ""}</div>
                   </div>
                 );
               })}
               <div className="axis"><div /><div /><div className="ticks"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div><div /><div /></div>
+              {gapRows.some((r) => r.d != null && r.items < MIN_ITEMS) ? (
+                <p className="small muted" style={{ marginTop: 8 }}>* Fewer than {MIN_ITEMS} shared questions on this pillar — indicative only.</p>
+              ) : null}
+              {smallSample ? (
+                <p className="small" style={{ marginTop: 8, color: "var(--amber, #b7791f)" }}>
+                  ⚠ Small samples ({nameOfType(gA)} n={A.n}, {nameOfType(gB)} n={B.n}) — differences based on fewer
+                  than {MIN_N} respondents per group are indicative, not conclusive.
+                </p>
+              ) : null}
             </>
           )}
         </div>
@@ -173,13 +186,13 @@ export default function Insights() {
             <span className="ic c-red" style={{ width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}><I.info /></span>
             <h2 style={{ margin: 0 }}>Critical alignment gap</h2>
           </div>
-          {biggest && biggest.d != null ? (
+          {biggest ? (
             <>
               <p className="small" style={{ lineHeight: 1.55 }}>
-                {GROUP_META[(A?.pillars?.[biggest.p.id] ?? 0) >= (B?.pillars?.[biggest.p.id] ?? 0) ? gA : gB]?.label} see a
-                substantially healthier innovation system than{" "}
-                {GROUP_META[(A?.pillars?.[biggest.p.id] ?? 0) >= (B?.pillars?.[biggest.p.id] ?? 0) ? gB : gA]?.label} experience
-                ({biggest.d} points apart on {biggest.p.short}). Validate this gap before acting on the overall average.
+                {nameOfType(biggest.a >= biggest.b ? gA : gB)} see a substantially healthier innovation system than{" "}
+                {nameOfType(biggest.a >= biggest.b ? gB : gA)} experience
+                ({biggest.d} points apart on {biggest.p.short}, measured on the {biggest.items} questions both answered).
+                Validate this gap before acting on the overall average.
               </p>
               {sel ? <Link href={`/campaigns/${sel}`} style={{ fontWeight: 700 }}>Review campaign detail →</Link> : null}
             </>
@@ -233,7 +246,7 @@ export default function Insights() {
           <span className="legend-dot" style={{ background: "var(--band-med)", marginLeft: 14 }} />Medium 40–69
           <span className="legend-dot" style={{ background: "var(--band-high)", marginLeft: 14 }} />High 70+
           <span style={{ marginLeft: 14 }}>|</span>
-          <span style={{ marginLeft: 14 }}>Don&apos;t-know and not-applicable answers are excluded from scores and tracked as a data-quality signal.</span>
+          <span style={{ marginLeft: 14 }}>Each group&apos;s scores cover the questions that group was asked; the gap chart above compares shared questions only. Don&apos;t-know and not-applicable answers are excluded from scores and tracked as a data-quality signal.</span>
         </p>
       </div>
     </Shell>
