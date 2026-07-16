@@ -43,7 +43,11 @@ export default function Campaign() {
   const [editName, setEditName] = useState("");
   const [editThreshold, setEditThreshold] = useState("");
   const [editCloses, setEditCloses] = useState("");
+  const [editThanks, setEditThanks] = useState("");
+  const [editClosedMsg, setEditClosedMsg] = useState("");
   const [saved, setSaved] = useState(false);
+  // QR
+  const [qr, setQr] = useState(null); // { token, dataUrl }
   // unique links
   const [uniqGroup, setUniqGroup] = useState("");
   const [uniqCount, setUniqCount] = useState("5");
@@ -55,12 +59,14 @@ export default function Campaign() {
     const { data: mem } = await sb().from("fs_memberships").select("role").limit(1).maybeSingle();
     setRole(mem?.role || "");
     const { data: camp, error: e1 } = await sb().from("fs_campaigns")
-      .select("id, name, status, opens_at, closes_at, anonymity_threshold").eq("id", id).maybeSingle();
+      .select("id, name, status, opens_at, closes_at, anonymity_threshold, thankyou_message, closed_message").eq("id", id).maybeSingle();
     if (e1 || !camp) { setErr(e1 ? e1.message : "Campaign not found (or you don't have access)."); return; }
     setC(camp);
     setEditName(camp.name);
     setEditThreshold(String(camp.anonymity_threshold));
     setEditCloses(camp.closes_at ? camp.closes_at.slice(0, 10) : "");
+    setEditThanks(camp.thankyou_message || "");
+    setEditClosedMsg(camp.closed_message || "");
     const [{ data: gs }, { data: ls }, { data: lib }] = await Promise.all([
       sb().from("fs_groups").select("id, type, label, target_n").eq("campaign_id", id),
       sb().from("fs_links").select("id, group_id, token, mode, active, used_count, max_uses").eq("campaign_id", id).order("created_at"),
@@ -86,6 +92,14 @@ export default function Campaign() {
   async function copy(token) {
     try { await navigator.clipboard.writeText(respondUrl(token)); setCopied(token); setTimeout(() => setCopied(""), 1600); } catch {}
   }
+  async function showQr(token) {
+    if (qr && qr.token === token) { setQr(null); return; }
+    try {
+      const QRCode = (await import("qrcode")).default;
+      const dataUrl = await QRCode.toDataURL(respondUrl(token), { width: 480, margin: 2, color: { dark: "#16160f", light: "#ffffff" } });
+      setQr({ token, dataUrl });
+    } catch { setErr("Could not generate the QR code."); }
+  }
   async function setStatus(status) {
     setBusy(true);
     const { error } = await sb().from("fs_campaigns").update({ status }).eq("id", id);
@@ -98,6 +112,8 @@ export default function Campaign() {
     const upd = {
       name: editName.trim() || c.name,
       anonymity_threshold: Math.max(1, Number(editThreshold || 5)),
+      thankyou_message: editThanks.trim() || null,
+      closed_message: editClosedMsg.trim() || null,
     };
     if (editCloses) upd.closes_at = new Date(editCloses + "T23:59:59").toISOString();
     const { error } = await sb().from("fs_campaigns").update(upd).eq("id", id);
@@ -224,6 +240,9 @@ export default function Campaign() {
                         <button className="btn btn-ghost btn-sm" onClick={() => copy(l.token)}>
                           {copied === l.token ? "Copied ✓" : "Copy link"}
                         </button>{" "}
+                        <button className="btn btn-ghost btn-sm" onClick={() => showQr(l.token)}>
+                          {qr && qr.token === l.token ? "Hide QR" : "QR code"}
+                        </button>{" "}
                         {canManage ? <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => deactivateLink(l.id)}>Deactivate</button> : null}
                       </>
                     ) : canManage ? (
@@ -239,6 +258,16 @@ export default function Campaign() {
           <p className="small muted" style={{ marginTop: 8 }}>
             {inactiveGroupLinks.length} deactivated group link{inactiveGroupLinks.length === 1 ? "" : "s"} — old URLs now show &quot;link deactivated&quot; to respondents.
           </p>
+        ) : null}
+        {qr ? (
+          <div style={{ marginTop: 14, textAlign: "center", padding: 16, border: "1px solid var(--line)", borderRadius: 12, background: "#fff" }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={qr.dataUrl} alt="QR code for the campaign link" style={{ width: 240, height: 240 }} />
+            <p className="small muted" style={{ margin: "8px 0 10px" }}>
+              Scan to open <code className="small">/respond/{qr.token}</code> — drop it into slides, posters or a Teams chat.
+            </p>
+            <a className="btn btn-ghost btn-sm" href={qr.dataUrl} download={`innopulse-qr-${qr.token}.png`}>Download PNG</a>
+          </div>
         ) : null}
       </div>
 
@@ -361,6 +390,12 @@ export default function Campaign() {
                   onChange={(e) => setEditCloses(e.target.value)} />
               </div>
             </div>
+            <label className="f">Thank-you message <span className="muted">(shown after a respondent submits; optional)</span></label>
+            <textarea value={editThanks} onChange={(e) => setEditThanks(e.target.value)}
+              placeholder="Default: Your responses have been recorded anonymously." />
+            <label className="f">Closed message <span className="muted">(shown when collection is closed or past its window; optional)</span></label>
+            <textarea value={editClosedMsg} onChange={(e) => setEditClosedMsg(e.target.value)}
+              placeholder="Default: This assessment is not currently open." />
             <div style={{ marginTop: 14 }}>
               <button className="btn btn-primary btn-sm" disabled={busy}>Save settings</button>
               {saved ? <span className="small" style={{ color: "var(--green)", marginLeft: 10 }}>Saved ✓</span> : null}
