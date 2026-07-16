@@ -27,7 +27,7 @@ export default function NewCampaign() {
   const [days, setDays] = useState(30);
   const [threshold, setThreshold] = useState(5);
   const [groups, setGroups] = useState(
-    Object.fromEntries(GROUP_DEFS.map((g) => [g.type, { on: !g.off, target: g.def }]))
+    Object.fromEntries(GROUP_DEFS.map((g) => [g.type, { on: !g.off, target: g.def, label: g.label }]))
   );
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -69,7 +69,8 @@ export default function NewCampaign() {
 
       const { data: gs, error: e2 } = await sb().from("fs_groups").insert(
         chosen.map((g) => ({
-          campaign_id: camp.id, type: g.type, label: g.label,
+          campaign_id: camp.id, type: g.type,
+          label: (groups[g.type].label || g.label).trim() || g.label,
           target_n: Math.max(0, Number(groups[g.type].target || 0)),
         }))
       ).select("id");
@@ -132,7 +133,18 @@ export default function NewCampaign() {
                 <label style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, cursor: "pointer" }}>
                   <input type="checkbox" checked={groups[g.type].on}
                     onChange={(e) => setGroups((s) => ({ ...s, [g.type]: { ...s[g.type], on: e.target.checked } }))} />
-                  <span><b>{g.label}</b><span className="small muted"> — {g.hint}</span></span>
+                  {g.type === "other" ? (
+                    <span style={{ flex: 1, display: "flex", alignItems: "center", gap: 8 }}>
+                      <input type="text" value={groups[g.type].label}
+                        onClick={(e) => e.preventDefault()}
+                        onChange={(e) => setGroups((s) => ({ ...s, [g.type]: { ...s[g.type], label: e.target.value } }))}
+                        placeholder="Type the stakeholder name, e.g. Board members"
+                        style={{ maxWidth: 320 }} />
+                      <span className="small muted">{g.hint}</span>
+                    </span>
+                  ) : (
+                    <span><b>{g.label}</b><span className="small muted"> — {g.hint}</span></span>
+                  )}
                 </label>
                 <span className="small muted">target</span>
                 <input type="text" inputMode="numeric" value={groups[g.type].target}
