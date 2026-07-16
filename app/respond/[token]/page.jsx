@@ -15,6 +15,30 @@ export default function Respond() {
   const [thanks, setThanks] = useState(null);
   const draftKey = "fs_draft_" + token;
   const saveTimer = useRef(null);
+  const lastBeacon = useRef(0);
+  const refKey = "fs_ref_" + token;
+  function clientRef() {
+    try {
+      let r = localStorage.getItem(refKey);
+      if (!r) {
+        const b = new Uint8Array(8); crypto.getRandomValues(b);
+        r = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+        localStorage.setItem(refKey, r);
+      }
+      return r;
+    } catch { return "anon"; }
+  }
+  function beacon(answeredNow, totalNow, force) {
+    const now = Date.now();
+    if (!force && now - lastBeacon.current < 5000) return;
+    lastBeacon.current = now;
+    try {
+      fetch(`${FN_BASE}/fs-respond`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, keepalive: true,
+        body: JSON.stringify({ action: "progress", token, ref: clientRef(), answered: answeredNow, total: totalNow }),
+      }).catch(() => {});
+    } catch { /* progress is best-effort */ }
+  }
 
   useEffect(() => {
     (async () => {
@@ -53,6 +77,7 @@ export default function Respond() {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       try { localStorage.setItem(draftKey, JSON.stringify({ answers, comments, at: Date.now() })); } catch {}
+      beacon(Object.keys(answers).length, total, false);
     }, 400);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
   }, [answers, comments, state, draftKey]);
@@ -78,7 +103,7 @@ export default function Respond() {
     try {
       const r = await fetch(`${FN_BASE}/fs-respond`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, answers, comments, consent: true }),
+        body: JSON.stringify({ token, answers, comments, consent: true, ref: clientRef() }),
       });
       const j = await r.json();
       if (!r.ok) { setErr(j.error || "Could not submit."); setState("form"); return; }
@@ -144,7 +169,7 @@ export default function Respond() {
           </span>
         </label>
         <div style={{ marginTop: 16 }}>
-          <button className="btn btn-primary" disabled={!consent} onClick={() => setState("form")}>
+          <button className="btn btn-primary" disabled={!consent} onClick={() => { setState("form"); beacon(0, total, true); }}>
             Start the assessment →
           </button>
         </div>
