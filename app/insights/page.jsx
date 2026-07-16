@@ -17,6 +17,7 @@ function FindingCard({ f }) {
         <b style={{ fontSize: 14 }}>{f.title}</b>
         <span className={"pill " + chip}>{f.klass}</span>
         <span className="small muted">confidence: {f.confidence}</span>
+        {f.iso ? <span className="pill violet" title="ISO 56001:2024 readiness area">ISO {f.iso}</span> : null}
       </summary>
       <p className="small" style={{ margin: "10px 0 6px", lineHeight: 1.6 }}>{f.text}</p>
       <p className="small muted" style={{ margin: "6px 0" }}>{f.evidence.join("  ")}</p>
