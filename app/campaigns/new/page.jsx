@@ -9,6 +9,7 @@ const GROUP_DEFS = [
   { type: "employee", label: "Employees", hint: "Staff across departments", def: 20 },
   { type: "customer", label: "Customers", hint: "Clients who experience your innovation", def: 10 },
   { type: "partner", label: "Service providers & partners", hint: "Suppliers, consultants, ecosystem", def: 5 },
+  { type: "other", label: "Other stakeholders", hint: "Board, unions, regulators, community — answers the outward-facing questions", def: 5, off: true },
 ];
 
 function randToken() {
@@ -26,7 +27,7 @@ export default function NewCampaign() {
   const [days, setDays] = useState(30);
   const [threshold, setThreshold] = useState(5);
   const [groups, setGroups] = useState(
-    Object.fromEntries(GROUP_DEFS.map((g) => [g.type, { on: true, target: g.def }]))
+    Object.fromEntries(GROUP_DEFS.map((g) => [g.type, { on: !g.off, target: g.def }]))
   );
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
