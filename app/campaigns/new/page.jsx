@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { sb } from "../../../lib/supabase";
-import { TopBar } from "../../ui";
+import { Shell } from "../../ui";
 
 const GROUP_DEFS = [
   { type: "executive", label: "Executives & leadership", hint: "Board, exco, senior leaders", def: 5 },
@@ -94,8 +94,8 @@ export default function NewCampaign() {
 
   if (!user) return <p className="muted">Loading…</p>;
   return (
-    <>
-      <TopBar user={user} />
+    <Shell active="campaigns" user={user}>
+      <div className="crumbs"><a href="/campaigns">Campaigns</a> / <b>New</b></div>
       <h1>New assessment campaign</h1>
       <p className="muted small">{org ? org.name : ""}</p>
       {!canCreate ? (
@@ -150,6 +150,6 @@ export default function NewCampaign() {
           </button>
         </form>
       )}
-    </>
+    </Shell>
   );
 }
