@@ -1,0 +1,167 @@
+"use client";
+import { useEffect, useMemo, useState } from "react";
+import { useParams } from "next/navigation";
+import { FN_BASE } from "../../../lib/supabase";
+
+export default function Respond() {
+  const { token } = useParams();
+  const [state, setState] = useState("loading"); // loading | intro | form | sending | done | error
+  const [err, setErr] = useState("");
+  const [data, setData] = useState(null);
+  const [consent, setConsent] = useState(false);
+  const [answers, setAnswers] = useState({});
+  const [comments, setComments] = useState({});
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch(`${FN_BASE}/fs-respond?token=${encodeURIComponent(token)}`);
+        const j = await r.json();
+        if (!r.ok) { setErr(j.error || "This link is not valid."); setState("error"); return; }
+        setData(j); setState("intro");
+      } catch {
+        setErr("Could not load the assessment. Please check your connection and try again.");
+        setState("error");
+      }
+    })();
+  }, [token]);
+
+  const total = useMemo(
+    () => data ? data.questionnaire.pillars.reduce((s, p) => s + p.questions.length, 0) : 0,
+    [data]
+  );
+  const answered = Object.keys(answers).length;
+  const pct = total ? Math.round((answered / total) * 100) : 0;
+
+  async function submit() {
+    if (answered < total) {
+      const firstMissing = data.questionnaire.pillars.flatMap((p) => p.questions).find((q) => !answers[q.key]);
+      if (firstMissing) {
+        const el = document.getElementById("q_" + firstMissing.key);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      setErr(`Please answer all questions — ${total - answered} remaining.`);
+      return;
+    }
+    setErr(""); setState("sending");
+    try {
+      const r = await fetch(`${FN_BASE}/fs-respond`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, answers, comments, consent: true }),
+      });
+      const j = await r.json();
+      if (!r.ok) { setErr(j.error || "Could not submit."); setState("form"); return; }
+      setState("done");
+      window.scrollTo({ top: 0 });
+    } catch {
+      setErr("Network problem while submitting — please try again.");
+      setState("form");
+    }
+  }
+
+  if (state === "loading") return <p className="muted">Loading…</p>;
+
+  if (state === "error") return (
+    <div style={{ maxWidth: 560, margin: "60px auto" }} className="card">
+      <h1>Assessment unavailable</h1>
+      <p>{err}</p>
+      <p className="muted small">If you believe this is a mistake, contact the person who sent you the link.</p>
+    </div>
+  );
+
+  if (state === "done") return (
+    <div style={{ maxWidth: 560, margin: "60px auto" }} className="card">
+      <h1>Thank you ✓</h1>
+      <p>Your responses have been recorded anonymously.</p>
+      <p className="muted small">
+        Results are only ever reported for groups, never for individuals, and only once
+        a group has enough responses to protect anonymity.
+      </p>
+    </div>
+  );
+
+  const q = data.questionnaire;
+
+  if (state === "intro") return (
+    <div style={{ maxWidth: 640, margin: "40px auto" }}>
+      <div className="card">
+        <div className="small muted" style={{ marginBottom: 6 }}>
+          {data.org?.name} · {data.campaign?.name}
+        </div>
+        <h1>Innovation health assessment</h1>
+        <p>
+          You&apos;ve been invited to contribute as part of the{" "}
+          <b>{data.group?.label}</b> group. It takes about 10–12 minutes:{" "}
+          {total} short statements — choose how strongly you agree with each.
+        </p>
+        <p className="muted small">
+          If you genuinely can&apos;t judge a statement, choose <b>Don&apos;t know</b>;
+          if it doesn&apos;t apply to your relationship with the organisation, choose{" "}
+          <b>Not applicable</b>. These are never counted against the organisation&apos;s score.
+        </p>
+        <label className="qopt" style={{ marginTop: 16 }}>
+          <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+          <span className="small">
+            I consent to my anonymous responses being used to assess this organisation&apos;s
+            innovation health. No name or email is collected with my answers.
+          </span>
+        </label>
+        <div style={{ marginTop: 16 }}>
+          <button className="btn btn-primary" disabled={!consent} onClick={() => setState("form")}>
+            Start the assessment →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // form
+  return (
+    <div style={{ maxWidth: 760, margin: "0 auto" }}>
+      <div className="progressbar">
+        <div className="track"><div className="fill" style={{ width: pct + "%" }} /></div>
+        <div className="lab"><span>{answered} of {total} answered</span><span>{pct}%</span></div>
+      </div>
+
+      {q.pillars.map((p, pi) => (
+        <section key={p.id}>
+          <div className="pilhead">
+            <div className="n">Section {pi + 1} of {q.pillars.length}</div>
+            <h2>{p.name}</h2>
+            <div className="small muted">{p.desc}</div>
+          </div>
+          {p.questions.map((qq, qi) => (
+            <div className="qblock" key={qq.key} id={"q_" + qq.key}>
+              <div className="qtext">{qi + 1}. {qq.text}</div>
+              {q.scale.map((s) => (
+                <label key={s.code} className={"qopt" + (answers[qq.key] === s.code ? " sel" : "")}>
+                  <input
+                    type="radio" name={qq.key} value={s.code}
+                    checked={answers[qq.key] === s.code}
+                    onChange={() => setAnswers((a) => ({ ...a, [qq.key]: s.code }))}
+                  />
+                  {s.label}
+                </label>
+              ))}
+            </div>
+          ))}
+          <div style={{ margin: "16px 0 8px" }}>
+            <label className="f">{p.commentPrompt} <span className="muted">(optional)</span></label>
+            <textarea
+              value={comments[p.id] || ""}
+              onChange={(e) => setComments((c) => ({ ...c, [p.id]: e.target.value }))}
+              placeholder="Optional — your comments are anonymous."
+            />
+          </div>
+        </section>
+      ))}
+
+      {err ? <div className="err">{err}</div> : null}
+      <div style={{ margin: "22px 0 40px" }}>
+        <button className="btn btn-primary" onClick={submit} disabled={state === "sending"}>
+          {state === "sending" ? "Submitting…" : "Submit my responses"}
+        </button>
+      </div>
+    </div>
+  );
+}
