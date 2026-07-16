@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { sb, FN_BASE } from "../../../../lib/supabase";
+import { Shell } from "../../../ui";
 
 const GROUP_LABEL = { executive: "Executives", employee: "Employees", customer: "Customers", partner: "Partners" };
 function bandOf(v) { return v < 40 ? "low" : v < 70 ? "medium" : "high"; }
@@ -32,8 +33,8 @@ export default function Report() {
     })();
   }, [id, router]);
 
-  if (err) return <div className="err">{err}</div>;
-  if (!data) return <p className="muted">Preparing report…</p>;
+  if (err) return (<Shell active="campaigns"><div className="err">{err}</div></Shell>);
+  if (!data) return (<Shell active="campaigns"><p className="muted">Preparing report…</p></Shell>);
 
   const pillars = data.pillars || [];
   const visible = (data.groups || []).filter((g) => !g.suppressed);
@@ -69,6 +70,7 @@ export default function Report() {
   }
 
   return (
+    <Shell active="campaigns">
     <div className="report">
       <style>{`
         @media print {
@@ -187,5 +189,6 @@ export default function Report() {
         </p>
       </div>
     </div>
+    </Shell>
   );
 }
