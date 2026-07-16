@@ -1,15 +1,36 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { sb, FN_BASE } from "../../../lib/supabase";
 import { TopBar, bandCls } from "../../ui";
 
 const GROUP_LABEL = { executive: "Executives", employee: "Employees", customer: "Customers", partner: "Partners" };
 
+function randToken() {
+  const b = new Uint8Array(8);
+  crypto.getRandomValues(b);
+  return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+}
+function csvEsc(v) {
+  const s = String(v ?? "");
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function downloadCsv(name, rows) {
+  const csv = rows.map((r) => r.map(csvEsc).join(",")).join("\r\n");
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 export default function Campaign() {
   const { id } = useParams();
   const router = useRouter();
   const [user, setUser] = useState(null);
+  const [role, setRole] = useState("");
   const [c, setC] = useState(null);
   const [groups, setGroups] = useState([]);
   const [links, setLinks] = useState([]);
@@ -18,36 +39,50 @@ export default function Campaign() {
   const [err, setErr] = useState("");
   const [copied, setCopied] = useState("");
   const [busy, setBusy] = useState(false);
+  // settings
+  const [editName, setEditName] = useState("");
+  const [editThreshold, setEditThreshold] = useState("");
+  const [editCloses, setEditCloses] = useState("");
+  const [saved, setSaved] = useState(false);
+  // unique links
+  const [uniqGroup, setUniqGroup] = useState("");
+  const [uniqCount, setUniqCount] = useState("5");
 
   const load = useCallback(async () => {
     const { data: u } = await sb().auth.getUser();
     if (!u.user) { router.replace("/login"); return; }
     setUser(u.user);
+    const { data: mem } = await sb().from("fs_memberships").select("role").limit(1).maybeSingle();
+    setRole(mem?.role || "");
     const { data: camp, error: e1 } = await sb().from("fs_campaigns")
       .select("id, name, status, opens_at, closes_at, anonymity_threshold").eq("id", id).maybeSingle();
     if (e1 || !camp) { setErr(e1 ? e1.message : "Campaign not found (or you don't have access)."); return; }
     setC(camp);
+    setEditName(camp.name);
+    setEditThreshold(String(camp.anonymity_threshold));
+    setEditCloses(camp.closes_at ? camp.closes_at.slice(0, 10) : "");
     const [{ data: gs }, { data: ls }, { data: lib }] = await Promise.all([
       sb().from("fs_groups").select("id, type, label, target_n").eq("campaign_id", id),
-      sb().from("fs_links").select("id, group_id, token, mode, active, used_count").eq("campaign_id", id),
+      sb().from("fs_links").select("id, group_id, token, mode, active, used_count, max_uses").eq("campaign_id", id).order("created_at"),
       sb().from("fs_interventions").select("*"),
     ]);
     setGroups(gs || []); setLinks(ls || []); setLibrary(lib || []);
+    if (!uniqGroup && gs && gs.length) setUniqGroup(gs[0].id);
     const { data: sess } = await sb().auth.getSession();
     const jwt = sess.session?.access_token;
     if (jwt) {
       try {
         const r = await fetch(`${FN_BASE}/fs-results?campaign_id=${id}`, { headers: { Authorization: `Bearer ${jwt}` } });
         if (r.ok) setResults(await r.json());
-      } catch { /* results are best-effort */ }
+      } catch { /* best-effort */ }
     }
-  }, [id, router]);
+  }, [id, router, uniqGroup]);
 
   useEffect(() => { load(); }, [load]);
 
-  function respondUrl(token) {
-    return `${window.location.origin}/respond/${token}`;
-  }
+  const canManage = role === "owner" || role === "manager";
+
+  function respondUrl(token) { return `${window.location.origin}/respond/${token}`; }
   async function copy(token) {
     try { await navigator.clipboard.writeText(respondUrl(token)); setCopied(token); setTimeout(() => setCopied(""), 1600); } catch {}
   }
@@ -57,12 +92,90 @@ export default function Campaign() {
     setBusy(false);
     if (error) setErr(error.message); else load();
   }
+  async function saveSettings(e) {
+    e.preventDefault();
+    setBusy(true); setSaved(false);
+    const upd = {
+      name: editName.trim() || c.name,
+      anonymity_threshold: Math.max(1, Number(editThreshold || 5)),
+    };
+    if (editCloses) upd.closes_at = new Date(editCloses + "T23:59:59").toISOString();
+    const { error } = await sb().from("fs_campaigns").update(upd).eq("id", id);
+    setBusy(false);
+    if (error) setErr(error.message);
+    else { setSaved(true); setTimeout(() => setSaved(false), 2000); load(); }
+  }
+  async function deactivateLink(linkId) {
+    setBusy(true);
+    const { error } = await sb().from("fs_links").update({ active: false }).eq("id", linkId);
+    setBusy(false);
+    if (error) setErr(error.message); else load();
+  }
+  async function regenerateLink(groupId) {
+    setBusy(true);
+    const { error } = await sb().from("fs_links").insert({ campaign_id: id, group_id: groupId, token: randToken(), mode: "group" });
+    setBusy(false);
+    if (error) setErr(error.message); else load();
+  }
+  async function generateUnique() {
+    const n = Math.min(50, Math.max(1, Number(uniqCount || 5)));
+    if (!uniqGroup) return;
+    setBusy(true);
+    const rows = Array.from({ length: n }, () => ({
+      campaign_id: id, group_id: uniqGroup, token: randToken(), mode: "unique", max_uses: 1,
+    }));
+    const { error } = await sb().from("fs_links").insert(rows);
+    setBusy(false);
+    if (error) setErr(error.message); else load();
+  }
 
-  if (err) return (<><TopBar user={user} /><div className="err">{err}</div></>);
+  function exportSummary() {
+    if (!results) return;
+    const pillars = results.pillars || [];
+    const rows = [["Campaign", results.campaign.name], ["Organisation", results.org?.name || ""],
+      ["Status", results.campaign.status], ["Anonymity threshold", results.campaign.anonymity_threshold], [],
+      ["Group", "Responses", "Target", ...pillars.map((p) => p.short), "Don't know / N-A %"]];
+    for (const g of results.groups || []) {
+      if (g.suppressed) rows.push([GROUP_LABEL[g.type] || g.type, g.n, g.target_n, `suppressed (below ${results.campaign.anonymity_threshold})`]);
+      else rows.push([GROUP_LABEL[g.type] || g.type, g.n, g.target_n, ...pillars.map((p) => g.pillars[p.id] ?? ""), g.dkna_pct]);
+    }
+    if (results.overall && !results.overall.suppressed) {
+      rows.push(["All groups", results.overall.n, "", ...pillars.map((p) => results.overall.pillars[p.id] ?? ""), ""]);
+      rows.push([], ["Overall weighted score", results.overall.score ?? ""]);
+    }
+    downloadCsv(`${results.campaign.name.replace(/[^\w]+/g, "-")}-results.csv`, rows);
+  }
+  async function exportQuestions() {
+    const { data: sess } = await sb().auth.getSession();
+    const jwt = sess.session?.access_token;
+    if (!jwt) return;
+    const r = await fetch(`${FN_BASE}/fs-results?campaign_id=${id}&detail=1`, { headers: { Authorization: `Bearer ${jwt}` } });
+    if (!r.ok) { setErr("Could not load question detail."); return; }
+    const d = await r.json();
+    const types = (d.groups || []).filter((g) => !g.suppressed).map((g) => g.type);
+    const head = ["Pillar", "Question"];
+    for (const t of types) head.push(`${GROUP_LABEL[t] || t} mean`, `${GROUP_LABEL[t] || t} n`, `${GROUP_LABEL[t] || t} DK/NA`);
+    const rows = [head];
+    for (const q of d.questions || []) {
+      const row = [q.pillar, q.text];
+      for (const t of types) {
+        const e = q.groups[t] || {};
+        row.push(e.mean ?? "", e.n_scored ?? 0, e.n_dkna ?? 0);
+      }
+      rows.push(row);
+    }
+    downloadCsv(`${d.campaign.name.replace(/[^\w]+/g, "-")}-questions.csv`, rows);
+  }
+
+  if (err && !c) return (<><TopBar user={user} /><div className="err">{err}</div></>);
   if (!c) return <p className="muted">Loading…</p>;
 
   const linkByGroup = {};
-  for (const l of links) linkByGroup[l.group_id] = l;
+  for (const l of links) if (l.mode === "group" && l.active && !linkByGroup[l.group_id]) linkByGroup[l.group_id] = l;
+  const inactiveGroupLinks = links.filter((l) => l.mode === "group" && !l.active);
+  const uniqueLinks = links.filter((l) => l.mode === "unique");
+  const groupById = {};
+  for (const g of groups) groupById[g.id] = g;
   const resByGroup = {};
   if (results?.groups) for (const g of results.groups) resByGroup[g.id] = g;
   const pillars = results?.pillars || [];
@@ -74,21 +187,25 @@ export default function Campaign() {
       <p className="small muted">
         <span className={"pill " + c.status}>{c.status}</span>{" "}
         · Anonymity threshold: {c.anonymity_threshold} response{c.anonymity_threshold === 1 ? "" : "s"} per group
+        {c.closes_at ? <> · closes {new Date(c.closes_at).toLocaleDateString()}</> : null}
       </p>
-      <div style={{ margin: "12px 0 20px" }}>
-        {c.status !== "open" ? (
+      {err ? <div className="err">{err}</div> : null}
+      <div style={{ margin: "12px 0 20px", display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {canManage ? (c.status !== "open" ? (
           <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => setStatus("open")}>Open collection</button>
         ) : (
           <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => setStatus("closed")}>Close collection</button>
-        )}
+        )) : null}
+        <button className="btn btn-ghost btn-sm" onClick={exportSummary} disabled={!results}>⬇ Results CSV</button>
+        <button className="btn btn-ghost btn-sm" onClick={exportQuestions} disabled={!results}>⬇ Question detail CSV</button>
+        <Link className="btn btn-ghost btn-sm" href={`/campaigns/${id}/report`}>Report view (print / PDF)</Link>
       </div>
 
       <div className="card">
         <h2>Campaign links</h2>
         <p className="muted small">
           Each stakeholder group has its own signed link — the URL carries only a random
-          token, so respondents can&apos;t change which group they answer for. Share the
-          right link with the right audience.
+          token, so respondents can&apos;t change which group they answer for.
         </p>
         <table className="t">
           <thead><tr><th>Group</th><th>Link</th><th>Responses</th><th></th></tr></thead>
@@ -99,19 +216,72 @@ export default function Campaign() {
               return (
                 <tr key={g.id}>
                   <td><b>{GROUP_LABEL[g.type] || g.type}</b><div className="small muted">{g.label}</div></td>
-                  <td>{l ? <code className="small">/respond/{l.token}</code> : <span className="muted">—</span>}</td>
+                  <td>{l ? <code className="small">/respond/{l.token}</code> : <span className="muted small">no active link</span>}</td>
                   <td>{r ? `${r.n} / ${g.target_n || "—"}` : "0"}</td>
-                  <td>{l ? (
-                    <button className="btn btn-ghost btn-sm" onClick={() => copy(l.token)}>
-                      {copied === l.token ? "Copied ✓" : "Copy link"}
-                    </button>
-                  ) : null}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    {l ? (
+                      <>
+                        <button className="btn btn-ghost btn-sm" onClick={() => copy(l.token)}>
+                          {copied === l.token ? "Copied ✓" : "Copy link"}
+                        </button>{" "}
+                        {canManage ? <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => deactivateLink(l.id)}>Deactivate</button> : null}
+                      </>
+                    ) : canManage ? (
+                      <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => regenerateLink(g.id)}>New link</button>
+                    ) : null}
+                  </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
+        {inactiveGroupLinks.length ? (
+          <p className="small muted" style={{ marginTop: 8 }}>
+            {inactiveGroupLinks.length} deactivated group link{inactiveGroupLinks.length === 1 ? "" : "s"} — old URLs now show &quot;link deactivated&quot; to respondents.
+          </p>
+        ) : null}
       </div>
+
+      {canManage ? (
+        <div className="card">
+          <h2>Unique invitation links</h2>
+          <p className="muted small">
+            Single-use links let you track completion per invitee without connecting
+            identities to answers. Each link dies after one submission.
+          </p>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+            <select value={uniqGroup} onChange={(e) => setUniqGroup(e.target.value)}
+              style={{ padding: "9px 12px", border: "1px solid var(--line)", borderRadius: 10, fontSize: 14.5, background: "#fff" }}>
+              {groups.map((g) => <option key={g.id} value={g.id}>{GROUP_LABEL[g.type] || g.type}</option>)}
+            </select>
+            <input type="text" inputMode="numeric" value={uniqCount}
+              onChange={(e) => setUniqCount(e.target.value.replace(/\D/g, ""))} style={{ width: 70 }} />
+            <button className="btn btn-primary btn-sm" disabled={busy} onClick={generateUnique}>Generate</button>
+          </div>
+          {uniqueLinks.length === 0 ? <p className="muted small">None yet.</p> : (
+            <table className="t">
+              <thead><tr><th>Group</th><th>Link</th><th>Status</th><th></th></tr></thead>
+              <tbody>
+                {uniqueLinks.map((l) => {
+                  const used = l.used_count >= (l.max_uses || 1) || !l.active;
+                  return (
+                    <tr key={l.id}>
+                      <td className="small">{GROUP_LABEL[groupById[l.group_id]?.type] || "—"}</td>
+                      <td><code className="small">/respond/{l.token}</code></td>
+                      <td><span className={"pill " + (used ? "closed" : "open")}>{used ? "used" : "unused"}</span></td>
+                      <td>{!used ? (
+                        <button className="btn btn-ghost btn-sm" onClick={() => copy(l.token)}>
+                          {copied === l.token ? "Copied ✓" : "Copy"}
+                        </button>
+                      ) : null}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      ) : null}
 
       <div className="card">
         <h2>Results by stakeholder group</h2>
@@ -172,6 +342,32 @@ export default function Campaign() {
 
       <GapsCard results={results} />
       <InterventionsCard results={results} library={library} />
+
+      {canManage ? (
+        <div className="card" style={{ maxWidth: 640 }}>
+          <h2>Campaign settings</h2>
+          <form onSubmit={saveSettings}>
+            <label className="f">Name</label>
+            <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} />
+            <div className="grid2">
+              <div>
+                <label className="f">Anonymity threshold</label>
+                <input type="text" inputMode="numeric" value={editThreshold}
+                  onChange={(e) => setEditThreshold(e.target.value.replace(/\D/g, ""))} />
+              </div>
+              <div>
+                <label className="f">Closes on</label>
+                <input type="text" placeholder="YYYY-MM-DD" value={editCloses}
+                  onChange={(e) => setEditCloses(e.target.value)} />
+              </div>
+            </div>
+            <div style={{ marginTop: 14 }}>
+              <button className="btn btn-primary btn-sm" disabled={busy}>Save settings</button>
+              {saved ? <span className="small" style={{ color: "var(--green)", marginLeft: 10 }}>Saved ✓</span> : null}
+            </div>
+          </form>
+        </div>
+      ) : null}
     </>
   );
 }
@@ -258,7 +454,6 @@ function InterventionsCard({ results, library }) {
   for (const g of results.groups || []) if (!g.suppressed) byGroup[g.type] = g;
 
   const picks = [];
-  // 1) Perception-gap triggers (executive vs employee) come first — they usually matter most
   for (const p of pillars) {
     const ex = byGroup.executive?.pillars?.[p.id];
     const em = byGroup.employee?.pillars?.[p.id];
@@ -267,7 +462,6 @@ function InterventionsCard({ results, library }) {
       if (gapEntry) picks.push({ entry: gapEntry, p, why: `Executives ${ex} vs employees ${em} (gap ${Math.round((ex - em) * 10) / 10})` });
     }
   }
-  // 2) Band matches for the weakest pillars overall
   const ranked = pillars
     .map((p) => ({ p, v: overall.pillars?.[p.id] }))
     .filter((x) => x.v !== null && x.v !== undefined)
