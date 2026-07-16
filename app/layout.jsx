@@ -9,14 +9,7 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body>
-        <div className="shell">
-          {children}
-          <div className="footer">
-            InnoPulse Full-Scale · preview build · The Growth System
-          </div>
-        </div>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
