@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { sb } from "../../lib/supabase";
-import { TopBar } from "../ui";
+import { I } from "../ui";
 
 export default function Login() {
   const router = useRouter();
@@ -21,11 +21,13 @@ export default function Login() {
   }
 
   return (
-    <>
-      <TopBar />
-      <div style={{ maxWidth: 420, margin: "40px auto" }}>
+    <div className="authwrap">
+      <div className="authcard">
+        <div className="authbrand">
+          <span className="sb-logo"><I.pulse /></span> InnoPulse <span className="muted" style={{ fontWeight: 700, fontSize: 13, letterSpacing: 1.2 }}>FULL-SCALE</span>
+        </div>
         <div className="card">
-          <h1>Sign in</h1>
+          <h1 style={{ fontSize: 24 }}>Sign in</h1>
           <p className="muted small">
             Corporate workspace access. Respondents don&apos;t need an account —
             they use the campaign link they were given.
@@ -37,13 +39,14 @@ export default function Login() {
             <label className="f">Password</label>
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
             <div style={{ marginTop: 18 }}>
-              <button className="btn btn-primary" disabled={busy}>
+              <button className="btn btn-primary" disabled={busy} style={{ width: "100%", justifyContent: "center" }}>
                 {busy ? "Signing in…" : "Sign in"}
               </button>
             </div>
           </form>
         </div>
+        <p className="footer" style={{ marginTop: 14 }}>InnoPulse Full-Scale · preview build · The Growth System</p>
       </div>
-    </>
+    </div>
   );
 }
