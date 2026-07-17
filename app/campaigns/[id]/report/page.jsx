@@ -1,15 +1,21 @@
 "use client";
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { sb, FN_BASE } from "../../../../lib/supabase";
 import { Shell, bandWord, bandOf, groupName } from "../../../ui";
 import { bestGaps, MIN_N } from "../../../lib/gaps";
 import { evaluateFindings } from "../../../lib/findings";
 
-export default function Report() {
+export default function ReportPage() {
+  return <Suspense fallback={<p className="muted">Preparing report…</p>}><Report /></Suspense>;
+}
+
+function Report() {
   const { id } = useParams();
   const router = useRouter();
+  const rid = useSearchParams().get("rid"); // snapshot mode (Gate 1)
   const [data, setData] = useState(null);
+  const [snap, setSnap] = useState(null); // fs_reports row when rendering a frozen snapshot
   const [library, setLibrary] = useState([]);
   const [reviewed, setReviewed] = useState(null); // rule_ids approved for report
   const [err, setErr] = useState("");
@@ -21,6 +27,17 @@ export default function Report() {
       const { data: sess } = await sb().auth.getSession();
       const jwt = sess.session?.access_token;
       try {
+        if (rid) {
+          const { data: rep } = await sb().from("fs_reports").select("*").eq("id", rid).maybeSingle();
+          if (rep?.snapshot) {
+            const { data: lib } = await sb().from("fs_interventions").select("*");
+            setSnap(rep);
+            setData(rep.snapshot);
+            setLibrary(lib || []);
+            setReviewed(new Set((rep.snapshot.findings || []).map((f) => f.id)));
+            return;
+          }
+        }
         const [r, lib, revs] = await Promise.all([
           fetch(`${FN_BASE}/fs-results?campaign_id=${id}&detail=1`, { headers: { Authorization: `Bearer ${jwt}` } }),
           sb().from("fs_interventions").select("*"),
@@ -32,7 +49,7 @@ export default function Report() {
         setReviewed(new Set((revs.data || []).map((x) => x.rule_id)));
       } catch { setErr("Could not load results."); }
     })();
-  }, [id, router]);
+  }, [id, rid, router]);
 
   if (err) return (<Shell active="campaigns"><div className="err">{err}</div></Shell>);
   if (!data) return (<Shell active="campaigns"><p className="muted">Preparing report…</p></Shell>);
@@ -86,9 +103,14 @@ export default function Report() {
         .big { font-size: 40px; font-weight: 800; line-height: 1; }
       `}</style>
 
-      <div className="noprint" style={{ margin: "6px 0 16px", display: "flex", gap: 10 }}>
+      <div className="noprint" style={{ margin: "6px 0 16px", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <button className="btn btn-primary btn-sm" onClick={() => window.print()}>Print / Save as PDF</button>
         <a className="btn btn-ghost btn-sm" href={`/campaigns/${id}`}>← Back to campaign</a>
+        {snap ? (
+          <span className="pill teal">Frozen snapshot v{snap.version} · {new Date(snap.snapshot.generated_at).toLocaleString()} · {String(snap.checksum || "").slice(0, 8)}</span>
+        ) : (
+          <span className="pill draft" title="Live preview recalculates from current data — generate a report on the Reports page for an immutable version">Live preview — not a versioned report</span>
+        )}
       </div>
 
       <div className="rcard">
