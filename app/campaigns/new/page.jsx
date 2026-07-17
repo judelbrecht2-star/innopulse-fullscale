@@ -133,9 +133,9 @@ export default function NewCampaign() {
             <select value={verId} onChange={(e) => setVerId(e.target.value)}>
               {versions.map((v) => (
                 <option key={v.id} value={v.id}>
-                  {v.version.includes("draft")
-                    ? `v${v.version.replace("-draft", "")} — stakeholder-tailored (draft, awaiting sign-off)`
-                    : `v${v.version} — classic (same 50 questions for every group)`}
+                  {v.version === "1.0"
+                    ? `v${v.version} — classic (same 50 questions for every group)`
+                    : `v${v.version} — stakeholder-tailored (recommended)${v.version.includes("draft") ? " (draft)" : ""}`}
                 </option>
               ))}
             </select>
