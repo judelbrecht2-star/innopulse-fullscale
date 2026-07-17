@@ -9,7 +9,20 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
+  const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+
+  async function forgot() {
+    setErr(""); setMsg("");
+    if (!email) { setErr("Enter your email first, then click the reset link."); return; }
+    setBusy(true);
+    const { error } = await sb().auth.resetPasswordForEmail(email, {
+      redirectTo: "https://innopulse-fullscale.vercel.app/account",
+    });
+    setBusy(false);
+    if (error) setErr(error.message);
+    else setMsg("Reset link sent — check your inbox, then set a new password on the Settings page it opens.");
+  }
 
   async function submit(e) {
     e.preventDefault();
@@ -33,6 +46,7 @@ export default function Login() {
             they use the campaign link they were given.
           </p>
           {err ? <div className="err">{err}</div> : null}
+          {msg ? <div className="ok">{msg}</div> : null}
           <form onSubmit={submit}>
             <label className="f">Email</label>
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="username" />
@@ -44,6 +58,12 @@ export default function Login() {
               </button>
             </div>
           </form>
+          <p className="small" style={{ marginTop: 12 }}>
+            <button type="button" onClick={forgot} disabled={busy}
+              style={{ background: "none", border: "none", padding: 0, cursor: "pointer", textDecoration: "underline", color: "var(--muted)" }}>
+              Forgotten your password? Email me a reset link
+            </button>
+          </p>
         </div>
         <p className="footer" style={{ marginTop: 14 }}>InnoPulse Full-Scale · preview build · The Growth System</p>
       </div>
