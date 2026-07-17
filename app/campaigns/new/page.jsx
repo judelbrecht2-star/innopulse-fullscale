@@ -61,38 +61,22 @@ export default function NewCampaign() {
     if (!verId) { setErr("Choose a questionnaire version."); return; }
     setBusy(true);
     try {
-      const opens = new Date();
-      const closes = new Date(Date.now() + Number(days || 30) * 86400000);
-      const { data: camp, error: e1 } = await sb().from("fs_campaigns").insert({
-        org_id: org.id, name: name.trim(), status: "open",
-        questionnaire_version_id: verId,
-        opens_at: opens.toISOString(), closes_at: closes.toISOString(),
-        anonymity_threshold: Math.max(4, Number(threshold || 5)),
-        created_by: user.id,
-      }).select("id").single();
-      if (e1 || !camp) throw new Error(e1 ? e1.message : "Could not create campaign.");
-
-      const { data: gs, error: e2 } = await sb().from("fs_groups").insert(
-        chosen.map((g) => ({
-          campaign_id: camp.id, type: g.type,
+      // Gate 1: one server-side transaction (fs_create_campaign) validates and
+      // creates campaign + groups + links + audit as a DRAFT, or nothing at all.
+      const { data: campId, error } = await sb().rpc("fs_create_campaign", {
+        p_org: org.id,
+        p_name: name.trim(),
+        p_qv: verId,
+        p_threshold: Math.max(4, Number(threshold || 5)),
+        p_days: Math.max(1, Number(days || 30)),
+        p_groups: chosen.map((g) => ({
+          type: g.type,
           label: (groups[g.type].label || g.label).trim() || g.label,
-          target_n: Math.max(0, Number(groups[g.type].target || 0)),
-        }))
-      ).select("id");
-      if (e2) throw new Error(e2.message);
-
-      const { error: e3 } = await sb().from("fs_links").insert(
-        (gs || []).map((g) => ({
-          campaign_id: camp.id, group_id: g.id, token: randToken(), mode: "group",
-        }))
-      );
-      if (e3) throw new Error(e3.message);
-
-      await sb().from("fs_audit").insert({
-        org_id: org.id, actor: user.id, action: "campaign.create",
-        entity: "fs_campaigns", entity_id: camp.id,
+          target: Math.max(0, Number(groups[g.type].target || 0)),
+        })),
       });
-      router.push(`/campaigns/${camp.id}`);
+      if (error || !campId) throw new Error(error?.message || "Could not create campaign.");
+      router.push(`/campaigns/${campId}`);
     } catch (ex) {
       setErr(String(ex.message || ex));
       setBusy(false);
@@ -178,8 +162,12 @@ export default function NewCampaign() {
 
           {err ? <div className="err">{err}</div> : null}
           <button className="btn btn-primary" disabled={busy}>
-            {busy ? "Creating…" : "Create campaign & generate links"}
+            {busy ? "Creating…" : "Create draft campaign"}
           </button>
+          <p className="small muted" style={{ marginTop: 8 }}>
+            The campaign starts as a <b>draft</b> with its links ready — review everything on the
+            campaign page, then launch with “Open collection”. Nothing is collected until you do.
+          </p>
         </form>
       )}
     </Shell>
