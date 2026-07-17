@@ -101,7 +101,10 @@ export default function Campaign() {
   }
   async function setStatus(status) {
     setBusy(true);
-    const { error } = await sb().from("fs_campaigns").update({ status }).eq("id", id);
+    // launching uses the audited server transaction (stamps opens_at)
+    const { error } = status === "open"
+      ? await sb().rpc("fs_open_campaign", { p_camp: id })
+      : await sb().from("fs_campaigns").update({ status }).eq("id", id);
     setBusy(false);
     if (error) setErr(error.message); else load();
   }
