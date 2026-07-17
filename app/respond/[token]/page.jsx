@@ -185,7 +185,8 @@ export default function Respond() {
             I consent to my responses being used to assess this organisation&apos;s innovation
             health. No name or email is collected. Reports only ever show group results
             (hidden until enough people respond); my individual answers are visible only to
-            the organisation&apos;s assessment team for data-quality checks.
+            the organisation&apos;s assessment team for data-quality checks.{" "}
+            <a href="/privacy" target="_blank" style={{ color: "inherit" }}>Privacy notice</a>
           </span>
         </label>
         <div style={{ marginTop: 16 }}>
