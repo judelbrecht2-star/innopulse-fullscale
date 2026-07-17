@@ -53,14 +53,39 @@ export default function Reports() {
     return r.json();
   }
 
+  async function sha256(s) {
+    const h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+    return Array.from(new Uint8Array(h), (b) => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  // Gate 1: generation freezes a snapshot. Downloads render from the snapshot,
+  // never from live data — two downloads of the same version are byte-identical.
   async function generate(rtype) {
     if (!genFor) return;
     setBusy(true); setErr("");
     try {
-      const title = `${campName(genFor)} — ${TYPES[rtype].label} report`;
-      await sb().from("fs_reports").insert({ campaign_id: genFor, title, rtype, created_by: user.id });
+      const d = await fetchResults(genFor);
+      const { data: revs } = await sb().from("fs_finding_reviews").select("rule_id").eq("campaign_id", genFor);
+      const approved = new Set((revs || []).map((x) => x.rule_id));
+      const findings = evaluateFindings(d).filter((f) => approved.has(f.id));
+      const snapshot = {
+        generated_at: new Date().toISOString(),
+        campaign: d.campaign, org: d.org, pillars: d.pillars, groups: d.groups,
+        overall: d.overall, questions: d.questions || null,
+        findings, rulebook: "v1.1", engine: "shared-gaps-v1",
+      };
+      const body = JSON.stringify(snapshot);
+      const checksum = await sha256(body);
+      const prior = reports.filter((r) => r.campaign_id === genFor && r.rtype === rtype);
+      const version = prior.length ? Math.max(...prior.map((r) => r.version || 1)) + 1 : 1;
+      const title = `${campName(genFor)} — ${TYPES[rtype].label} report v${version}`;
+      const { data: ins, error } = await sb().from("fs_reports").insert({
+        campaign_id: genFor, title, rtype, created_by: user.id,
+        snapshot, version, checksum, questionnaire_version: d.questionnaire_version || null,
+      }).select("*").single();
+      if (error) throw new Error(error.message);
       await load();
-      await open({ campaign_id: genFor, rtype, title });
+      await open(ins);
     } catch (ex) { setErr(String(ex.message || ex)); }
     setBusy(false);
   }
@@ -68,11 +93,15 @@ export default function Reports() {
   async function open(rep) {
     setErr("");
     try {
-      if (rep.rtype === "executive") { router.push(`/campaigns/${rep.campaign_id}/report`); return; }
-      const d = await fetchResults(rep.campaign_id);
-      const base = campName(rep.campaign_id).replace(/[^\w]+/g, "-");
+      if (rep.rtype === "executive") {
+        router.push(`/campaigns/${rep.campaign_id}/report${rep.snapshot ? `?rid=${rep.id}` : ""}`);
+        return;
+      }
+      // render strictly from the frozen snapshot; legacy rows without one fall back to live
+      const d = rep.snapshot || await fetchResults(rep.campaign_id);
+      const base = campName(rep.campaign_id).replace(/[^\w]+/g, "-") + (rep.version ? `-v${rep.version}` : "");
       if (rep.rtype === "findings_csv") {
-        const fs = evaluateFindings(d);
+        const fs = rep.snapshot ? (d.findings || []) : evaluateFindings(d);
         const rows = [["Priority", "Finding", "Class", "Confidence", "ISO 56001", "Trigger", "Conclusion", "Evidence", "Validate"]];
         fs.forEach((f) => rows.push([f.severity === 3 ? "P3" : f.severity === 2 ? "P2" : "P1", f.title, f.klass, f.confidence, f.iso || "", f.trigger || "", f.text, f.evidence.join(" "), f.validate]));
         dl(`${base}-findings.csv`, rows);
@@ -158,7 +187,7 @@ export default function Reports() {
             <tbody>
               {filtered.map((r) => (
                 <tr key={r.id}>
-                  <td><b>{r.title}</b><div className="small muted">{TYPES[r.rtype]?.desc}</div></td>
+                  <td><b>{r.title}</b><div className="small muted">{TYPES[r.rtype]?.desc}{r.checksum ? ` · snapshot ${r.checksum.slice(0, 8)}` : " · legacy (live data)"}</div></td>
                   <td className="small">{campName(r.campaign_id)}</td>
                   <td><span className={"pill " + (TYPES[r.rtype]?.pill || "draft")}>{TYPES[r.rtype]?.label || r.rtype}</span></td>
                   <td><span className="pill open">Ready</span></td>
@@ -173,9 +202,10 @@ export default function Reports() {
           </table>
         )}
         <p className="small muted" style={{ marginTop: 10 }}>
-          Reports always regenerate from the campaign&apos;s current data, so a re-download after new
-          responses reflects the latest picture. Scheduled recurring delivery is planned alongside
-          multi-cycle trend reports.
+          Each generated report is an immutable, checksummed snapshot — re-downloading the same
+          version always yields identical content, and only findings approved in the review
+          workbench are included. New responses require generating a new version. Scheduled
+          recurring delivery is planned alongside multi-cycle trend reports.
         </p>
       </div>
     </Shell>
