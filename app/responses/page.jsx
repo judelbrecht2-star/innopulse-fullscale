@@ -38,6 +38,12 @@ export default function Responses() {
   const [fStatus, setFStatus] = useState("all");
   const [fQuality, setFQuality] = useState("all");
   const [fComments, setFComments] = useState(false);
+  // reminders
+  const [remOpen, setRemOpen] = useState(false);
+  const [remGroup, setRemGroup] = useState("");
+  const [remEmails, setRemEmails] = useState("");
+  const [remMsg, setRemMsg] = useState("");
+  const [remState, setRemState] = useState("");
   // selection + drawer
   const [checks, setChecks] = useState({});
   const [drawer, setDrawer] = useState(null); // row object
@@ -233,7 +239,8 @@ export default function Responses() {
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button className="btn btn-ghost" onClick={() => exportCsv(false)}>⭱ Export responses</button>
-          <button className="btn btn-primary" disabled title="Email reminders arrive with the notifications build — use Copy link per group meanwhile">✈ Send reminders</button>
+          <button className="btn btn-primary" disabled={!canManage} title={canManage ? "" : "Owners and managers only"}
+            onClick={() => { setRemOpen((v) => !v); if (!remGroup && groups.length) setRemGroup(groups[0].id); }}>✈ Send reminders</button>
           <select value={sel} onChange={(e) => setSel(e.target.value)} style={{ width: "auto", fontWeight: 600 }}>
             {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
@@ -249,6 +256,46 @@ export default function Responses() {
         <div className="stat"><span className="ic c-grey"><I.doc /></span><div><div className="k">Outstanding</div><div className="v">{outstanding}</div></div></div>
         <div className="stat"><span className="ic c-violet"><I.info /></span><div><div className="k">Flagged</div><div className="v">{flagged}</div>{lastResp ? <span className="small muted">last response {ago(lastResp)}</span> : null}</div></div>
       </div>
+
+      {remOpen ? (
+        <div className="card" style={{ border: "1.5px solid var(--primary)" }}>
+          <h2>Send reminder emails</h2>
+          <p className="small muted" style={{ margin: "2px 0 10px" }}>
+            Recipients get the group&apos;s signed link. Addresses are used for delivery only —
+            they are never stored or connected to responses.
+          </p>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+            <select value={remGroup} onChange={(e) => setRemGroup(e.target.value)} style={{ width: "auto" }}>
+              {groups.map((g) => <option key={g.id} value={g.id}>{groupName(g)}</option>)}
+            </select>
+          </div>
+          <label className="f">Email addresses <span className="muted">(comma or new-line separated, max 100)</span></label>
+          <textarea value={remEmails} onChange={(e) => setRemEmails(e.target.value)} placeholder="ana@company.com, ben@company.com" />
+          <label className="f">Personal note <span className="muted">(optional)</span></label>
+          <textarea value={remMsg} onChange={(e) => setRemMsg(e.target.value)} placeholder="A short line from you, shown in the email." />
+          {remState ? <p className="small" style={{ color: remState.startsWith("Sent") ? "var(--green, #2f855a)" : "var(--primary)" }}>{remState}</p> : null}
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <button className="btn btn-primary btn-sm" disabled={busy} onClick={async () => {
+              const emails = remEmails.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean);
+              if (!emails.length) { setRemState("Enter at least one email address."); return; }
+              setBusy(true); setRemState("Sending…");
+              try {
+                const { data: sess } = await sb().auth.getSession();
+                const r = await fetch(`${FN_BASE}/fs-notify`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess.session?.access_token}` },
+                  body: JSON.stringify({ campaign_id: sel, group_id: remGroup, emails, message: remMsg }),
+                });
+                const j = await r.json();
+                setRemState(r.ok ? `Sent ${j.sent} reminder${j.sent === 1 ? "" : "s"} ✓` : (j.error || "Could not send."));
+                if (r.ok) setRemEmails("");
+              } catch { setRemState("Could not send — network problem."); }
+              setBusy(false);
+            }}>Send</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => { setRemOpen(false); setRemState(""); }}>Close</button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="card">
         <h2>Stakeholder coverage</h2>
