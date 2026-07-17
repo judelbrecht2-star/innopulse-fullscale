@@ -65,7 +65,7 @@ export function Shell({ active, user, children }) {
     { id: "campaigns", label: "Campaigns", href: "/campaigns", icon: I.rocket },
     { id: "responses", label: "Responses", href: "/responses", icon: I.chat },
     { id: "insights", label: "Insights", href: "/insights", icon: I.chart },
-    { id: "reports", label: "Reports", soon: true, icon: I.doc },
+    { id: "reports", label: "Reports", href: "/reports", icon: I.doc },
     { id: "settings", label: "Settings", href: "/account", icon: I.gear },
   ];
   return (
