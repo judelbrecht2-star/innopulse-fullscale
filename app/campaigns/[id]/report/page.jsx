@@ -11,6 +11,7 @@ export default function Report() {
   const router = useRouter();
   const [data, setData] = useState(null);
   const [library, setLibrary] = useState([]);
+  const [reviewed, setReviewed] = useState(null); // rule_ids approved for report
   const [err, setErr] = useState("");
 
   useEffect(() => {
@@ -20,13 +21,15 @@ export default function Report() {
       const { data: sess } = await sb().auth.getSession();
       const jwt = sess.session?.access_token;
       try {
-        const [r, lib] = await Promise.all([
+        const [r, lib, revs] = await Promise.all([
           fetch(`${FN_BASE}/fs-results?campaign_id=${id}&detail=1`, { headers: { Authorization: `Bearer ${jwt}` } }),
           sb().from("fs_interventions").select("*"),
+          sb().from("fs_finding_reviews").select("rule_id").eq("campaign_id", id),
         ]);
         if (!r.ok) { setErr("Could not load results."); return; }
         setData(await r.json());
         setLibrary(lib.data || []);
+        setReviewed(new Set((revs.data || []).map((x) => x.rule_id)));
       } catch { setErr("Could not load results."); }
     })();
   }, [id, router]);
@@ -175,13 +178,25 @@ export default function Report() {
       </div>
 
       {(() => {
-        const findings = evaluateFindings(data);
-        return findings.length ? (
+        // Gate 1: only findings explicitly reviewed in the workbench reach the client report.
+        const all = evaluateFindings(data);
+        const findings = all.filter((f) => reviewed && reviewed.has(f.id));
+        const held = all.length - findings.length;
+        if (!findings.length) return all.length ? (
           <div className="rcard">
             <h2 style={{ margin: "0 0 8px", fontSize: 16 }}>Automatic findings</h2>
+            <p className="small muted" style={{ margin: 0 }}>
+              {all.length} pattern{all.length === 1 ? "" : "s"} detected, none yet approved for reporting.
+              Findings appear here only after review in the findings workbench (Insights → Automatic findings).
+            </p>
+          </div>
+        ) : null;
+        return (
+          <div className="rcard">
+            <h2 style={{ margin: "0 0 8px", fontSize: 16 }}>Reviewed findings</h2>
             <p className="small muted" style={{ margin: "0 0 8px" }}>
-              Pattern-based conclusions generated from this campaign&apos;s answers. Each cites its evidence;
-              classes distinguish observed facts from supported interpretations and hypotheses still to validate.
+              Pattern-based conclusions generated from this campaign&apos;s answers and approved by a reviewer
+              in the findings workbench{held > 0 ? ` (${held} further detected pattern${held === 1 ? "" : "s"} held back pending review)` : ""}. Each cites its evidence.
             </p>
             {findings.map((f) => (
               <div key={f.id} style={{ borderTop: "1px solid var(--line)", padding: "10px 0" }}>
@@ -194,7 +209,7 @@ export default function Report() {
               </div>
             ))}
           </div>
-        ) : null;
+        );
       })()}
 
       <div className="rcard">
