@@ -98,27 +98,26 @@ export default function Responses() {
     }
     setServedTotals(totals);
 
-    // F6: fetch answers/comments only for THIS campaign's responses (chunked)
-    const ids = (rs || []).map((r) => r.id);
-    let ans = [], cm = [];
-    for (let i = 0; i < ids.length; i += 100) {
-      const chunk = ids.slice(i, i + 100);
-      const [{ data: a1 }, { data: c1 }] = await Promise.all([
-        sb().from("fs_answers").select("response_id, not_scored").in("response_id", chunk),
-        sb().from("fs_comments").select("response_id, pillar, body").in("response_id", chunk),
-      ]);
-      ans = ans.concat(a1 || []); cm = cm.concat(c1 || []);
-    }
-    const a = {};
-    for (const row of ans) {
-      a[row.response_id] = a[row.response_id] || { answered: 0, dk: 0 };
-      a[row.response_id].answered++;
-      if (row.not_scored) a[row.response_id].dk++;
-    }
-    setAggs(a);
-    const cmap = {};
-    for (const row of cm) (cmap[row.response_id] = cmap[row.response_id] || []).push(row);
-    setComms(cmap);
+    // Gate 1: response aggregates come from the server endpoint, which enforces
+    // role + anonymity threshold. Raw answers/comments are no longer readable
+    // from the browser at all.
+    try {
+      const { data: sess } = await sb().auth.getSession();
+      const r = await fetch(`${FN_BASE}/fs-responses-ops`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess.session?.access_token}` },
+        body: JSON.stringify({ action: "list", campaign_id: cid }),
+      });
+      if (r.ok) {
+        const j = await r.json();
+        const a = {}, cmap = {};
+        for (const row of j.responses || []) {
+          a[row.id] = row.agg || { answered: 0, dk: 0 };
+          if (row.nComments) cmap[row.id] = Array.from({ length: row.nComments }, () => ({}));
+        }
+        setAggs(a); setComms(cmap);
+      } else { setAggs({}); setComms({}); }
+    } catch { setAggs({}); setComms({}); }
   }, [campaigns]);
 
   useEffect(() => { load(sel); }, [sel, load]);
@@ -172,10 +171,8 @@ export default function Responses() {
     if (fQuality !== "all" && row.quality !== fQuality) return false;
     if (fComments && !row.nComments) return false;
     if (q.trim()) {
-      const needle = q.trim().toLowerCase();
-      const inRef = row.ref.toLowerCase().includes(needle);
-      const inComments = row.kind === "response" && (comms[row.id] || []).some((cm) => cm.body.toLowerCase().includes(needle));
-      if (!inRef && !inComments) return false;
+      // comment-body search removed: verbatims no longer reach the browser in bulk (Gate 1)
+      if (!row.ref.toLowerCase().includes(q.trim().toLowerCase())) return false;
     }
     return true;
   });
@@ -215,16 +212,15 @@ export default function Responses() {
   async function openDrawer(row) {
     if (row.kind !== "response") return;
     setDrawer(row); setDetail(null);
-    const { data } = await sb().from("fs_answers").select("question_key, value, not_scored").eq("response_id", row.id);
-    const per = {};
-    for (const a of data || []) {
-      const pid = a.question_key.split("_")[0];
-      per[pid] = per[pid] || { sum: 0, c: 0, dk: 0, n: 0 };
-      per[pid].n++;
-      if (a.not_scored || a.value === null) per[pid].dk++;
-      else { per[pid].sum += Number(a.value); per[pid].c++; }
-    }
-    setDetail(per);
+    try {
+      const { data: sess } = await sb().auth.getSession();
+      const r = await fetch(`${FN_BASE}/fs-responses-ops`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess.session?.access_token}` },
+        body: JSON.stringify({ action: "detail", campaign_id: sel, response_id: row.id }),
+      });
+      setDetail(r.ok ? await r.json() : { error: true });
+    } catch { setDetail({ error: true }); }
   }
 
   const statusPill = (s) => s === "Completed" ? "open" : s === "In progress" ? "teal" : s === "Not started" ? "closed" : s === "Excluded" ? "closed" : s === "Test" ? "violet" : "draft";
@@ -414,15 +410,15 @@ export default function Responses() {
             </p>
 
             {(() => {
-              // F4: while a group is below the anonymity threshold, individual detail is
-              // restricted to the org owner — small groups are the re-identification risk.
-              const groupN = resps.filter((x) => x.valid && x.group_id === drawer.group?.id).length;
-              const locked = groupN < threshold && role !== "owner";
-              if (locked) return (
+              // Gate 1: the server decides. Below-threshold data never reaches the browser;
+              // every individual-record view is audit-logged server-side.
+              if (!detail) return <p className="muted small" style={{ marginTop: 14 }}>Loading…</p>;
+              if (detail.error) return <div className="err" style={{ marginTop: 14 }}>Could not load this response.</div>;
+              if (detail.locked) return (
                 <div className="lockrow" style={{ marginTop: 16 }}>
-                  🔒 This group has {groupN} of {threshold} responses. To protect respondents in
-                  small groups, per-response answers and written feedback unlock for your role
-                  once the group passes the anonymity threshold (the owner can view sooner).
+                  🔒 This group has {detail.have} of {detail.needed} responses. To protect respondents
+                  in small groups, per-response answers and written feedback stay on the server until
+                  the group passes the anonymity threshold (the owner can view sooner).
                 </div>
               );
               return (
@@ -430,28 +426,27 @@ export default function Responses() {
                   <div className="vbanner">🛡 These are the respondent&apos;s verbatim comments — not an AI summary.</div>
 
                   <h2 style={{ fontSize: 15, margin: "14px 0 8px" }}>Pillar breakdown</h2>
-                  {!detail ? <p className="muted small">Loading…</p> : (
-                    <table className="t">
-                      <thead><tr><th>Pillar</th><th>Score</th><th>Answered</th><th>DK/NA</th></tr></thead>
-                      <tbody>
-                        {Object.entries(detail).map(([pid, d]) => (
-                          <tr key={pid}>
-                            <td className="small"><b>{PILLAR_NAMES[pid] || pid}</b></td>
-                            <td className="small">{d.c ? Math.round((d.sum / d.c) * 10) / 10 : "—"}</td>
-                            <td className="small">{d.n}</td>
-                            <td className="small">{d.dk}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
+                  <table className="t">
+                    <thead><tr><th>Pillar</th><th>Score</th><th>Answered</th><th>DK/NA</th></tr></thead>
+                    <tbody>
+                      {(detail.pillars || []).map((d) => (
+                        <tr key={d.pid}>
+                          <td className="small"><b>{PILLAR_NAMES[d.pid] || d.pid}</b></td>
+                          <td className="small">{d.score ?? "—"}</td>
+                          <td className="small">{d.n}</td>
+                          <td className="small">{d.dk}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                   <p className="small muted" style={{ margin: "6px 0 0" }}>
-                    Individual-level view — visible only to your team, never to respondents or in reports.
+                    Individual-level view — access is audit-logged, visible only to your team,
+                    never to respondents or in reports.
                   </p>
 
-                  <h2 style={{ fontSize: 15, margin: "18px 0 8px" }}>Written responses ({(comms[drawer.id] || []).length})</h2>
-                  {(comms[drawer.id] || []).length === 0 ? <p className="muted small">None left.</p> :
-                    (comms[drawer.id] || []).map((cm, i) => (
+                  <h2 style={{ fontSize: 15, margin: "18px 0 8px" }}>Written responses ({(detail.comments || []).length})</h2>
+                  {(detail.comments || []).length === 0 ? <p className="muted small">None left.</p> :
+                    (detail.comments || []).map((cm, i) => (
                       <div className="vcard" key={i}>
                         <div className="ph"><span className="pn">{PILLAR_NAMES[cm.pillar] || cm.pillar}</span><span className="tag">Verbatim response</span></div>
                         <p>{cm.body}</p>
