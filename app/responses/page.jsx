@@ -224,6 +224,11 @@ export default function Responses() {
   }
 
   const statusPill = (s) => s === "Completed" ? "open" : s === "In progress" ? "teal" : s === "Not started" ? "closed" : s === "Excluded" ? "closed" : s === "Test" ? "violet" : "draft";
+  // soft row tint + solid left edge per stakeholder group
+  const GROUP_TINT = {
+    executive: "rgba(232,51,46,.045)", employee: "rgba(14,140,140,.055)",
+    customer: "rgba(183,121,31,.06)", partner: "rgba(49,110,180,.055)", other: "rgba(122,90,190,.055)",
+  };
 
   return (
     <Shell active="responses" user={user}>
@@ -351,7 +356,11 @@ export default function Responses() {
             {filtered.length === 0 ? (
               <tr><td colSpan={9} className="muted small">No responses match these filters yet.</td></tr>
             ) : filtered.map((row) => (
-              <tr key={row.id} style={{ cursor: row.kind === "response" ? "pointer" : "default", background: drawer?.id === row.id ? "var(--primary-soft)" : undefined }}
+              <tr key={row.id} style={{
+                cursor: row.kind === "response" ? "pointer" : "default",
+                background: drawer?.id === row.id ? "var(--primary-soft)" : GROUP_TINT[row.group?.type] || undefined,
+                boxShadow: row.group ? `inset 3px 0 0 ${GROUP_BAR[row.group.type] || "var(--muted)"}` : undefined,
+              }}
                 onClick={() => openDrawer(row)}>
                 <td onClick={(e) => e.stopPropagation()}>
                   {row.kind === "response" ? (
