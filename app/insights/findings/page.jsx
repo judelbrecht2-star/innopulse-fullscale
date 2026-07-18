@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { sb, FN_BASE } from "../../../lib/supabase";
 import { Shell, I } from "../../ui";
 import { evaluateFindings, CLASS } from "../../lib/findings";
+import TagGlossary from "../../lib/TagGlossary";
 
 function csvEsc(v) { const s = String(v ?? ""); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
 const PRI = { 3: "P3 · Urgent", 2: "P2 · Material", 1: "P1 · Monitor" };
@@ -112,6 +113,8 @@ export default function FindingsWorkbench() {
         </div>
       </div>
       {err ? <div className="err">{err}</div> : null}
+
+      <TagGlossary />
 
       <div className="stats">
         <div className="stat"><span className="ic c-teal"><I.chart /></span><div><div className="k">Patterns detected</div><div className="v">{findings.length}</div></div></div>
