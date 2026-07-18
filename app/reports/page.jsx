@@ -6,6 +6,7 @@ import { sb, FN_BASE } from "../../lib/supabase";
 import { Shell, I, groupName } from "../ui";
 import { evaluateFindings } from "../lib/findings";
 import { generateWordReport } from "../lib/reportgen";
+import { computeTrend } from "../lib/trends";
 
 const TYPES = {
   executive: { label: "Executive", pill: "violet", desc: "Board-ready web report (print / save as PDF)" },
@@ -41,7 +42,7 @@ export default function Reports() {
     if (!u.user) { router.replace("/login"); return; }
     setUser(u.user);
     const [{ data: cs }, { data: rs }, { data: ip }] = await Promise.all([
-      sb().from("fs_campaigns").select("id, name, status, created_at, client_context, engagement_objective").order("created_at", { ascending: false }),
+      sb().from("fs_campaigns").select("id, name, status, created_at, client_context, engagement_objective, prior_campaign_id").order("created_at", { ascending: false }),
       sb().from("fs_reports").select("*").order("created_at", { ascending: false }),
       sb().from("fs_interpretations").select("scope, band, body, version"),
     ]);
@@ -115,12 +116,18 @@ export default function Reports() {
       const approved = new Set((revs || []).map((x) => x.rule_id));
       const findings = evaluateFindings(d).filter((f) => approved.has(f.id));
       const cRow = camps.find((x) => x.id === genFor);
+      // Step 5: cycle-over-cycle trend, frozen into the snapshot
+      let trend = null;
+      if (cRow?.prior_campaign_id) {
+        try { trend = computeTrend(d, await fetchResults(cRow.prior_campaign_id)); } catch { /* best-effort */ }
+      }
       const snapshot = {
         generated_at: new Date().toISOString(),
         campaign: d.campaign, org: d.org, pillars: d.pillars, groups: d.groups,
         overall: d.overall, questions: d.questions || null,
         findings, rulebook: "v1.1", engine: "shared-gaps-v1",
         segments: d.segments || null,
+        trend,
         client_context: content.client_context || cRow?.client_context || null,
         engagement_objective: content.engagement_objective || cRow?.engagement_objective || null,
         pillar_notes: Object.fromEntries((pn || []).filter((x) => x.body?.trim()).map((x) => [x.pillar, x.body])),
