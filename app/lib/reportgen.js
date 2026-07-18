@@ -221,22 +221,45 @@ export async function generateWordReport(rep, interps) {
     if (gmoves.length) b.push(P("By stakeholder group (average pillar movement): " + gmoves.map((g) => `${g.label || g.type} ${g.d > 0 ? "+" : ""}${g.d}`).join(" · ") + "."));
   }
 
-  // ---- segment cuts (Step 4; threshold-protected) ----
-  const segs = (s.segments || []).filter((x) => !x.info);
-  if (segs.length) {
-    b.push(H("Results by segment"));
-    b.push(P("Respondents could optionally declare their department or area. Cuts below the anonymity threshold are suppressed; the segment question is always optional, so totals may not sum to all responses."));
+  // ---- demographic / segment cuts (threshold-protected) ----
+  const cutTable = (title, rowsIn, notDeclared, caption) => {
     const sw = 2400, nw = 900, cw = Math.floor(4600 / pillars.length), ow = 900;
-    const rows = [new TableRow({ children: [TC("Segment", sw, { b: true, fill: "F4F1EC" }), TC("n", nw, { b: true, fill: "F4F1EC" }), ...pillars.map((p) => TC(p.short.split(" ")[0], cw, { b: true, fill: "F4F1EC" })), TC("Index", ow, { b: true, fill: "F4F1EC" })] })];
-    segs.forEach((sg) => rows.push(new TableRow({
+    const rows = [new TableRow({ children: [TC(title, sw, { b: true, fill: "F4F1EC" }), TC("n", nw, { b: true, fill: "F4F1EC" }), ...pillars.map((p) => TC(p.short.split(" ")[0], cw, { b: true, fill: "F4F1EC" })), TC("Index", ow, { b: true, fill: "F4F1EC" })] })];
+    rowsIn.forEach((sg) => rows.push(new TableRow({
       children: sg.suppressed
         ? [TC(sg.name, sw), TC(sg.n, nw), TC("Suppressed — below the anonymity threshold", cw * pillars.length + ow, { c: GREY, span: pillars.length + 1 })]
         : [TC(sg.name, sw), TC(sg.n, nw), ...pillars.map((p) => TC(sg.pillars?.[p.id] ?? "—", cw)), TC(sg.score ?? "—", ow, { b: true })],
     })));
-    const nd = (s.segments || []).find((x) => x.info);
-    if (nd) rows.push(new TableRow({ children: [TC("Not declared", sw, { c: GREY }), TC(nd.n, nw, { c: GREY }), TC("—", cw * pillars.length + ow, { c: GREY, span: pillars.length + 1 })] }));
+    if (notDeclared > 0) rows.push(new TableRow({ children: [TC("Prefer not to say", sw, { c: GREY }), TC(notDeclared, nw, { c: GREY }), TC("—", cw * pillars.length + ow, { c: GREY, span: pillars.length + 1 })] }));
     b.push(new Table({ columnWidths: [sw, nw, ...pillars.map(() => cw), ow], width: { size: sw + nw + cw * pillars.length + ow, type: WidthType.DXA }, rows }));
-    b.push(CAP("Table: Pillar scores and index by self-declared segment (threshold-protected)."));
+    b.push(CAP(caption));
+  };
+  const demoDims = (s.demographics || []).filter((d) => (d.options || []).length);
+  if (demoDims.length) {
+    b.push(H("Results by demographic"));
+    b.push(P("Respondents could optionally declare the demographic details below (every question offered “Prefer not to say”). Cuts under the anonymity threshold are suppressed, so no individual can be identified; totals may not sum to all responses."));
+    for (const dim of demoDims) {
+      b.push(H(dim.label, HeadingLevel.HEADING_2));
+      cutTable(dim.label, dim.options, dim.not_declared, `Table: Pillar scores and index by ${dim.label.toLowerCase()} (threshold-protected).`);
+      // largest within-dimension perception gap
+      const vis = dim.options.filter((o) => !o.suppressed && o.score != null);
+      if (vis.length >= 2) {
+        const hiO = vis.reduce((a, x) => (x.score > a.score ? x : a));
+        const loO = vis.reduce((a, x) => (x.score < a.score ? x : a));
+        const gap = Math.round((hiO.score - loO.score) * 10) / 10;
+        if (gap >= 10) {
+          b.push(P(`Perception gap: ${hiO.name} (index ${hiO.score}, n=${hiO.n}) experience the innovation system ${gap} points more positively than ${loO.name} (index ${loO.score}, n=${loO.n}). Gaps of this size within ${dim.label.toLowerCase()} groupings usually indicate uneven access to the innovation system rather than measurement noise — validate in follow-up conversations before acting.`, { i: true }));
+        }
+      }
+    }
+  } else {
+    const segs = (s.segments || []).filter((x) => !x.info);
+    if (segs.length) {
+      b.push(H("Results by segment"));
+      b.push(P("Respondents could optionally declare their department or area. Cuts below the anonymity threshold are suppressed; the segment question is always optional, so totals may not sum to all responses."));
+      const ndRow = (s.segments || []).find((x) => x.info);
+      cutTable("Segment", segs, ndRow ? ndRow.n : 0, "Table: Pillar scores and index by self-declared segment (threshold-protected).");
+    }
   }
 
   // ---- pillar chapters ----
