@@ -218,12 +218,12 @@ export default function FindingsWorkbench() {
           {active ? (
             <div className="card">
               <span className="pill" style={{ background: PRIC[active.severity], color: "#fff" }}>{PRI[active.severity]}</span>
-              <h2 style={{ margin: "10px 0 6px", fontSize: 21 }}>{active.title}</h2>
-              <p className="small" style={{ margin: "0 0 12px" }}>
+              <h2 style={{ margin: "10px 0 10px", fontSize: 21 }}>{active.title}</h2>
+              <div className="small" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px 10px", margin: "0 0 14px" }}>
                 <span className={"pill " + chipCls(active.klass)}>{active.klass}</span>
-                <span className="muted" style={{ marginLeft: 10 }}>Confidence · {active.confidence}</span>
-                {active.iso ? <span className="pill violet" style={{ marginLeft: 10 }}>ISO 56001 · {active.iso}</span> : null}
-              </p>
+                <span className="muted">Confidence · {active.confidence}</span>
+                {active.iso ? <span className="pill violet">ISO 56001 · {active.iso}</span> : null}
+              </div>
 
               {active.trigger ? (
                 <div style={{ border: "1px solid var(--line)", borderRadius: 12, padding: "12px 14px", marginBottom: 12 }}>
