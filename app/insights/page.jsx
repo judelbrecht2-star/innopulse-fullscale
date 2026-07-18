@@ -6,6 +6,7 @@ import { sb, FN_BASE } from "../../lib/supabase";
 import { Shell, I, GROUP_META, GROUP_BAR, groupName } from "../ui";
 import { sharedPillarScores, MIN_ITEMS, MIN_N } from "../lib/gaps";
 import { evaluateFindings, CLASS } from "../lib/findings";
+import { computeTrend, fmtDelta, deltaColor } from "../lib/trends";
 
 function FindingCard({ f }) {
   const chip = f.klass === CLASS.OBS ? "teal" : f.klass === CLASS.SUP ? "draft" : "closed";
@@ -45,12 +46,27 @@ export default function Insights() {
       if (!u.user) { router.replace("/login"); return; }
       setUser(u.user);
       const { data: cs } = await sb().from("fs_campaigns")
-        .select("id, name, status, created_at").order("created_at", { ascending: false });
+        .select("id, name, status, created_at, prior_campaign_id").order("created_at", { ascending: false });
       setCampaigns(cs || []);
       const target = (cs || []).find((c) => c.status === "open") || (cs || [])[0];
       if (target) setSel(target.id);
     })();
   }, [router]);
+
+  const [trend, setTrend] = useState(null);
+  useEffect(() => {
+    (async () => {
+      setTrend(null);
+      const cur = campaigns.find((c) => c.id === sel);
+      if (!results || !cur?.prior_campaign_id) return;
+      try {
+        const { data: sess } = await sb().auth.getSession();
+        const r = await fetch(`${FN_BASE}/fs-results?campaign_id=${cur.prior_campaign_id}`, { headers: { Authorization: `Bearer ${sess.session?.access_token}` } });
+        if (r.ok) setTrend(computeTrend(results, await r.json()));
+      } catch { /* trend is best-effort */ }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results, sel]);
 
   const loadResults = useCallback(async (cid) => {
     if (!cid) return;
@@ -135,6 +151,24 @@ export default function Insights() {
             : <span className="small muted">needs two visible groups with {MIN_ITEMS}+ shared questions</span>}
         </div></div>
       </div>
+
+      {trend && trend.overall.d != null ? (
+        <div className="card">
+          <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+            <h2 style={{ margin: 0 }}>Trend vs {trend.priorName}</h2>
+            <span style={{ fontWeight: 800, fontSize: 22, color: deltaColor(trend.overall.d) }}>{fmtDelta(trend.overall.d)}</span>
+            <span className="small muted">overall ({trend.overall.prev} → {trend.overall.cur} · n {trend.n.prev} → {trend.n.cur})</span>
+            {!trend.comparable ? <span className="pill draft" title="The two cycles used different questionnaire versions">directional only — versions differ</span> : null}
+          </div>
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 10 }}>
+            {trend.pillars.map((p) => (
+              <span key={p.id} className="small" style={{ border: "1px solid var(--line)", borderRadius: 99, padding: "5px 12px" }}>
+                {p.short}: <b style={{ color: deltaColor(p.d) }}>{fmtDelta(p.d)}</b>
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {findings.length ? (
         <div className="card">
