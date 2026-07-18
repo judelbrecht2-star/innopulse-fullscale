@@ -129,6 +129,7 @@ export default function Reports() {
         overall: d.overall, questions: d.questions || null,
         findings, rulebook: "v1.1", engine: "shared-gaps-v1",
         segments: d.segments || null,
+        demographics: d.demographics || null,
         trend,
         client_context: content.client_context || cRow?.client_context || null,
         engagement_objective: content.engagement_objective || cRow?.engagement_objective || null,
