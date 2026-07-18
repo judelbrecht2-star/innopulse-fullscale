@@ -312,7 +312,7 @@ export default function Insights() {
             <tbody>
               {(curDim?.options || []).map((o) => (
                 <tr key={o.name}>
-                  <td><b>{o.name}</b></td>
+                  <td><b>{o.name}</b>{!o.suppressed && o.n < MIN_N ? <span className="pill draft" style={{ marginLeft: 8, textTransform: "none", fontSize: 11 }} title={`Clears the privacy threshold but has fewer than ${MIN_N} respondents — read as indicative, not conclusive`}>indicative</span> : null}</td>
                   <td>{o.n}</td>
                   {o.suppressed ? (
                     <td colSpan={pillars.length + 1}>
