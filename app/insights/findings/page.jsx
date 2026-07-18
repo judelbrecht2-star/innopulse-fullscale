@@ -65,11 +65,11 @@ export default function FindingsWorkbench() {
     try {
       const [r, { data: revs }] = await Promise.all([
         fetch(`${FN_BASE}/fs-results?campaign_id=${cid}&detail=1`, { headers: { Authorization: `Bearer ${jwt}` } }),
-        sb().from("fs_finding_reviews").select("rule_id, reviewed_at").eq("campaign_id", cid),
+        sb().from("fs_finding_reviews").select("rule_id, reviewed_at, note_contradictory, note_alternative").eq("campaign_id", cid),
       ]);
       if (!r.ok) { setErr("Could not load results."); return; }
       setResults(await r.json());
-      setReviews(Object.fromEntries((revs || []).map((x) => [x.rule_id, x.reviewed_at])));
+      setReviews(Object.fromEntries((revs || []).map((x) => [x.rule_id, x])));
     } catch { setErr("Could not load results."); }
   }, []);
   useEffect(() => { load(sel); }, [sel, load]);
@@ -113,14 +113,21 @@ export default function FindingsWorkbench() {
         { campaign_id: sel, rule_id: f.id, reviewed_by: user.id },
         { onConflict: "campaign_id,rule_id" });
     }
-    const { data: revs } = await sb().from("fs_finding_reviews").select("rule_id, reviewed_at").eq("campaign_id", sel);
-    setReviews(Object.fromEntries((revs || []).map((x) => [x.rule_id, x.reviewed_at])));
+    const { data: revs } = await sb().from("fs_finding_reviews").select("rule_id, reviewed_at, note_contradictory, note_alternative").eq("campaign_id", sel);
+    setReviews(Object.fromEntries((revs || []).map((x) => [x.rule_id, x])));
     setBusy(false);
   }
 
+  async function saveNote(f, field, value) {
+    const v = value.trim().slice(0, 600) || null;
+    if ((reviews[f.id]?.[field] || null) === v) return;
+    await sb().from("fs_finding_reviews").update({ [field]: v }).eq("campaign_id", sel).eq("rule_id", f.id);
+    setReviews((rv) => ({ ...rv, [f.id]: { ...rv[f.id], [field]: v } }));
+  }
+
   function exportEvidence() {
-    const rows = [["Priority", "Finding", "Class", "Confidence", "ISO 56001", "Trigger", "Conclusion", "Evidence", "Alternatives", "Validate", "Reviewed"]];
-    findings.forEach((f) => rows.push([PRI[f.severity], f.title, f.klass, f.confidence, f.iso || "", f.trigger || "", f.text, f.evidence.join(" "), f.alternatives, f.validate, reviews[f.id] ? "yes" : "no"]));
+    const rows = [["Priority", "Finding", "Class", "Confidence", "ISO 56001", "Trigger", "Conclusion", "Evidence", "Alternatives", "Validate", "Reviewed", "Analyst: contradictory evidence", "Analyst: alternative explanation"]];
+    findings.forEach((f) => rows.push([PRI[f.severity], f.title, f.klass, f.confidence, f.iso || "", f.trigger || "", f.text, f.evidence.join(" "), f.alternatives, f.validate, reviews[f.id] ? "yes" : "no", reviews[f.id]?.note_contradictory || "", reviews[f.id]?.note_alternative || ""]));
     const csv = rows.map((r) => r.map(csvEsc).join(",")).join("\r\n");
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
@@ -259,7 +266,23 @@ export default function FindingsWorkbench() {
                 </button>
                 {sel ? <Link className="btn btn-ghost btn-sm" href={`/campaigns/${sel}/report`}>View in report</Link> : null}
               </div>
-              {reviews[active.id] ? <p className="small muted" style={{ marginTop: 8 }}>Reviewed {new Date(reviews[active.id]).toLocaleString()}</p> : null}
+              {reviews[active.id] ? (
+                <>
+                  <p className="small muted" style={{ marginTop: 8 }}>Reviewed {new Date(reviews[active.id].reviewed_at).toLocaleString()}</p>
+                  <div style={{ borderTop: "1px solid var(--line)", marginTop: 10, paddingTop: 12 }}>
+                    <div className="small" style={{ fontWeight: 800, marginBottom: 6 }}>Analyst notes <span className="muted" style={{ fontWeight: 400 }}>— carried into the report with this finding</span></div>
+                    <label className="f">Contradictory evidence <span className="muted small">(what pushes against this conclusion?)</span></label>
+                    <textarea key={active.id + "_c"} maxLength={600} defaultValue={reviews[active.id].note_contradictory || ""}
+                      placeholder="e.g. Two customer comments describe fast idea turnaround, which cuts against the visibility pattern."
+                      onBlur={(e) => saveNote(active, "note_contradictory", e.target.value)} style={{ minHeight: 64 }} />
+                    <label className="f" style={{ marginTop: 8 }}>Alternative explanation <span className="muted small">(your reading, beyond the rule&apos;s own alternatives)</span></label>
+                    <textarea key={active.id + "_a"} maxLength={600} defaultValue={reviews[active.id].note_alternative || ""}
+                      placeholder="e.g. The survey ran during retrenchment consultations — scores may reflect general anxiety rather than the innovation system."
+                      onBlur={(e) => saveNote(active, "note_alternative", e.target.value)} style={{ minHeight: 64 }} />
+                    <p className="small muted" style={{ margin: "6px 0 0" }}>Saved automatically when you click away.</p>
+                  </div>
+                </>
+              ) : null}
             </div>
           ) : <div className="card"><p className="muted small">No findings match these filters.</p></div>}
         </div>
