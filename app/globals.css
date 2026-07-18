@@ -15,7 +15,9 @@
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
-  font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  font-family:var(--font-ui),ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  font-feature-settings:"cv02","cv03","cv04","ss01";
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
   font-size:15.5px;line-height:1.5}
 a{color:var(--primary-dark)}
 
@@ -60,7 +62,17 @@ a{color:var(--primary-dark)}
 .crumbs b{color:var(--ink);font-weight:600}
 .pagehead{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;
   flex-wrap:wrap;margin-bottom:20px}
-h1{font-size:30px;letter-spacing:-.02em;margin:0 0 6px;font-weight:800}
+h1{font-family:var(--font-display),Georgia,serif;font-size:31px;letter-spacing:-.01em;margin:0 0 6px;font-weight:600}
+h2{font-family:var(--font-display),Georgia,serif;font-weight:600;letter-spacing:-.005em}
+.card h2{font-size:17.5px}
+.stat .k{font-weight:500;letter-spacing:.01em}
+.stat .v{font-weight:650}
+.lead{font-weight:400}
+b,strong{font-weight:650}
+th{font-weight:600!important}
+.pill{font-weight:650!important;letter-spacing:.45px!important}
+.btn{font-weight:550;letter-spacing:.005em}
+.btn-primary{font-weight:600}
 h2{font-size:17px;margin:0 0 10px;font-weight:700}
 .lead{color:var(--muted);max-width:640px;margin:0}
 .muted{color:var(--muted)} .small{font-size:13px}
