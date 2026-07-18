@@ -19,6 +19,7 @@ const CAP = (t) => new Paragraph({ spacing: { before: 40, after: 160 }, children
 const cellB = { top: { style: BorderStyle.SINGLE, size: 4, color: LINE }, bottom: { style: BorderStyle.SINGLE, size: 4, color: LINE }, left: { style: BorderStyle.SINGLE, size: 4, color: LINE }, right: { style: BorderStyle.SINGLE, size: 4, color: LINE } };
 const TC = (t, w, opts = {}) => new TableCell({
   width: { size: w, type: WidthType.DXA }, borders: cellB, margins: { top: 60, bottom: 60, left: 90, right: 90 },
+  columnSpan: opts.span,
   shading: opts.fill ? { type: ShadingType.CLEAR, fill: opts.fill } : undefined,
   children: [new Paragraph({ children: [new TextRun({ text: String(t), size: opts.s || 18.5, bold: opts.b, color: opts.c || "333338" })] })],
 });
@@ -190,6 +191,24 @@ export async function generateWordReport(rep, interps) {
     b.push(CAP("Figure 2: Widest perception gap per pillar, computed on shared questions only."));
     b.push(P("Gaps of this kind rarely mean one group is wrong; they usually mean the groups are describing different objects — policy as designed versus practice as experienced, or work as visible from the top versus as lived below. Where a gap exceeds 25 points the relevant finding in the register sets out competing explanations and the validation step to run before acting."));
   } else b.push(P("Not enough visible groups (or shared questions) yet for a fair comparison."));
+
+  // ---- segment cuts (Step 4; threshold-protected) ----
+  const segs = (s.segments || []).filter((x) => !x.info);
+  if (segs.length) {
+    b.push(H("Results by segment"));
+    b.push(P("Respondents could optionally declare their department or area. Cuts below the anonymity threshold are suppressed; the segment question is always optional, so totals may not sum to all responses."));
+    const sw = 2400, nw = 900, cw = Math.floor(4600 / pillars.length), ow = 900;
+    const rows = [new TableRow({ children: [TC("Segment", sw, { b: true, fill: "F4F1EC" }), TC("n", nw, { b: true, fill: "F4F1EC" }), ...pillars.map((p) => TC(p.short.split(" ")[0], cw, { b: true, fill: "F4F1EC" })), TC("Index", ow, { b: true, fill: "F4F1EC" })] })];
+    segs.forEach((sg) => rows.push(new TableRow({
+      children: sg.suppressed
+        ? [TC(sg.name, sw), TC(sg.n, nw), TC("Suppressed — below the anonymity threshold", cw * pillars.length + ow, { c: GREY, span: pillars.length + 1 })]
+        : [TC(sg.name, sw), TC(sg.n, nw), ...pillars.map((p) => TC(sg.pillars?.[p.id] ?? "—", cw)), TC(sg.score ?? "—", ow, { b: true })],
+    })));
+    const nd = (s.segments || []).find((x) => x.info);
+    if (nd) rows.push(new TableRow({ children: [TC("Not declared", sw, { c: GREY }), TC(nd.n, nw, { c: GREY }), TC("—", cw * pillars.length + ow, { c: GREY, span: pillars.length + 1 })] }));
+    b.push(new Table({ columnWidths: [sw, nw, ...pillars.map(() => cw), ow], width: { size: sw + nw + cw * pillars.length + ow, type: WidthType.DXA }, rows }));
+    b.push(CAP("Table: Pillar scores and index by self-declared segment (threshold-protected)."));
+  }
 
   // ---- pillar chapters ----
   for (const p of pillars) {
