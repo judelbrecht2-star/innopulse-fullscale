@@ -24,13 +24,39 @@ export default function Login() {
     else setMsg("Reset link sent — check your inbox, then set a new password on the Settings page it opens.");
   }
 
+  const [mfa, setMfa] = useState(null); // { factorId } while a TOTP challenge is pending
+  const [code, setCode] = useState("");
+
   async function submit(e) {
     e.preventDefault();
     setErr(""); setBusy(true);
     const { error } = await sb().auth.signInWithPassword({ email, password });
+    if (error) { setBusy(false); setErr(error.message); return; }
+    // Gate 1: if the account has TOTP enrolled, require the second factor
+    try {
+      const { data: aal } = await sb().auth.mfa.getAuthenticatorAssuranceLevel();
+      if (aal?.nextLevel === "aal2" && aal.nextLevel !== aal.currentLevel) {
+        const { data: f } = await sb().auth.mfa.listFactors();
+        const totp = f?.totp?.[0];
+        if (totp) { setMfa({ factorId: totp.id }); setBusy(false); return; }
+      }
+    } catch { /* no MFA configured */ }
     setBusy(false);
-    if (error) { setErr(error.message); return; }
     router.push("/dashboard");
+  }
+
+  async function verifyMfa(e) {
+    e.preventDefault();
+    setErr(""); setBusy(true);
+    try {
+      const { data: ch, error: e1 } = await sb().auth.mfa.challenge({ factorId: mfa.factorId });
+      if (e1) throw e1;
+      const { error: e2 } = await sb().auth.mfa.verify({ factorId: mfa.factorId, challengeId: ch.id, code: code.trim() });
+      if (e2) throw e2;
+      router.push("/dashboard");
+      return;
+    } catch (ex) { setErr(ex.message || "Invalid code — try again."); }
+    setBusy(false);
   }
 
   return (
@@ -47,6 +73,18 @@ export default function Login() {
           </p>
           {err ? <div className="err">{err}</div> : null}
           {msg ? <div className="ok">{msg}</div> : null}
+          {mfa ? (
+            <form onSubmit={verifyMfa}>
+              <label className="f">Two-factor code</label>
+              <input type="text" inputMode="numeric" autoFocus value={code} onChange={(e) => setCode(e.target.value)}
+                placeholder="6-digit code from your authenticator app" autoComplete="one-time-code" />
+              <div style={{ marginTop: 14 }}>
+                <button className="btn btn-primary" disabled={busy} style={{ width: "100%", justifyContent: "center" }}>
+                  {busy ? "Verifying…" : "Verify"}
+                </button>
+              </div>
+            </form>
+          ) : (
           <form onSubmit={submit}>
             <label className="f">Email</label>
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="username" />
@@ -58,6 +96,7 @@ export default function Login() {
               </button>
             </div>
           </form>
+          )}
           <p className="small" style={{ marginTop: 12 }}>
             <button type="button" onClick={forgot} disabled={busy}
               style={{ background: "none", border: "none", padding: 0, cursor: "pointer", textDecoration: "underline", color: "var(--muted)" }}>
