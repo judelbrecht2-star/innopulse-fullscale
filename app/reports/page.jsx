@@ -104,14 +104,16 @@ export default function Reports() {
     try {
       const d = await fetchResults(genFor);
       const { data: sess2 } = await sb().auth.getSession();
-      const [{ data: revs }, { data: pn }, vb] = await Promise.all([
+      const opsCall = (action) => fetch(`${FN_BASE}/fs-responses-ops`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess2.session?.access_token}` },
+        body: JSON.stringify({ action, campaign_id: genFor }),
+      }).then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+      const [{ data: revs }, { data: pn }, vb, th] = await Promise.all([
         sb().from("fs_finding_reviews").select("rule_id").eq("campaign_id", genFor),
         sb().from("fs_pillar_notes").select("pillar, body").eq("campaign_id", genFor),
-        fetch(`${FN_BASE}/fs-responses-ops`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess2.session?.access_token}` },
-          body: JSON.stringify({ action: "report_comments", campaign_id: genFor }),
-        }).then((r) => (r.ok ? r.json() : { verbatims: [] })).catch(() => ({ verbatims: [] })),
+        opsCall("report_comments"),
+        opsCall("theme_summary"),
       ]);
       const approved = new Set((revs || []).map((x) => x.rule_id));
       const findings = evaluateFindings(d).filter((f) => approved.has(f.id));
@@ -132,6 +134,7 @@ export default function Reports() {
         engagement_objective: content.engagement_objective || cRow?.engagement_objective || null,
         pillar_notes: Object.fromEntries((pn || []).filter((x) => x.body?.trim()).map((x) => [x.pillar, x.body])),
         verbatims: vb.verbatims || [],
+        comment_themes: th.themes || [],
       };
       const body = JSON.stringify(snapshot);
       const checksum = await sha256(body);
