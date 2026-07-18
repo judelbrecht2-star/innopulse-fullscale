@@ -44,6 +44,9 @@ export default function Campaign() {
   const [editThanks, setEditThanks] = useState("");
   const [editClosedMsg, setEditClosedMsg] = useState("");
   const [editSegs, setEditSegs] = useState("");
+  const [segList, setSegList] = useState([]);
+  const [segNew, setSegNew] = useState(null); // string while typing a new segment
+  const [editStatus, setEditStatus] = useState("");
   const [saved, setSaved] = useState(false);
   const [qr, setQr] = useState(null);
   const [uniqGroup, setUniqGroup] = useState("");
@@ -69,6 +72,8 @@ export default function Campaign() {
     setEditThanks(camp.thankyou_message || "");
     setEditClosedMsg(camp.closed_message || "");
     setEditSegs((camp.segments || []).join(", "));
+    setSegList(camp.segments || []);
+    setEditStatus(camp.status);
     const [{ data: gs }, { data: ls }, { data: lib }] = await Promise.all([
       sb().from("fs_groups").select("id, type, label, target_n").eq("campaign_id", id),
       sb().from("fs_links").select("id, group_id, token, mode, active, used_count, max_uses").eq("campaign_id", id).order("created_at"),
@@ -118,12 +123,19 @@ export default function Campaign() {
       anonymity_threshold: Math.max(4, Number(editThreshold || 5)),
       thankyou_message: editThanks.trim() || null,
       closed_message: editClosedMsg.trim() || null,
-      segments: editSegs.trim() ? editSegs.split(",").map((x) => x.trim()).filter(Boolean).slice(0, 30) : null,
+      segments: segList.length ? segList.slice(0, 30) : null,
     };
     if (editCloses) upd.closes_at = new Date(editCloses + "T23:59:59").toISOString();
     const { error } = await sb().from("fs_campaigns").update(upd).eq("id", id);
+    let e2 = null;
+    if (!error && editStatus && editStatus !== c.status) {
+      const r = editStatus === "open"
+        ? await sb().rpc("fs_open_campaign", { p_camp: id })
+        : await sb().from("fs_campaigns").update({ status: editStatus }).eq("id", id);
+      e2 = r.error;
+    }
     setBusy(false);
-    if (error) setErr(error.message);
+    if (error || e2) setErr((error || e2).message);
     else { setSaved(true); setTimeout(() => setSaved(false), 2000); load(); }
   }
   async function deactivateLink(linkId) {
@@ -427,35 +439,120 @@ export default function Campaign() {
       </div>
 
       {canManage ? (
-        <div className="card" style={{ maxWidth: 640 }}>
-          <h2>Campaign settings</h2>
+        <div className="card" style={{ maxWidth: 860, padding: 0, overflow: "hidden" }}>
           <form onSubmit={saveSettings}>
-            <label className="f">Name</label>
-            <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} />
-            <div className="grid2">
-              <div>
-                <label className="f">Anonymity threshold <span className="muted">(minimum 4)</span></label>
-                <input type="text" inputMode="numeric" value={editThreshold}
-                  onChange={(e) => setEditThreshold(e.target.value.replace(/\D/g, ""))} />
+            <div style={{ padding: "22px 26px 6px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                <div>
+                  <h2 style={{ margin: 0 }}>Campaign settings</h2>
+                  <p className="small muted" style={{ margin: "4px 0 0" }}>Manage the campaign window, privacy controls and respondent experience.</p>
+                </div>
+                <span className={"pill " + (c.status === "open" ? "open" : c.status === "draft" ? "draft" : "closed")}>
+                  ● {c.status === "open" ? "Open campaign" : c.status === "draft" ? "Draft" : c.status.charAt(0).toUpperCase() + c.status.slice(1)}
+                </span>
               </div>
-              <div>
-                <label className="f">Closes on</label>
-                <input type="text" placeholder="YYYY-MM-DD" value={editCloses}
-                  onChange={(e) => setEditCloses(e.target.value)} />
+
+              {/* 1 — Campaign details */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "20px 0 8px" }}>
+                <span className="numchip sm">1</span><h2 style={{ margin: 0, fontSize: 16.5 }}>Campaign details</h2>
+              </div>
+              <label className="f">Campaign name</label>
+              <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} />
+              <div className="grid2" style={{ marginTop: 4 }}>
+                <div>
+                  <label className="f">Closes on</label>
+                  <input type="date" value={editCloses} onChange={(e) => setEditCloses(e.target.value)} />
+                </div>
+                <div>
+                  <label className="f">Campaign status</label>
+                  <select value={editStatus} onChange={(e) => setEditStatus(e.target.value)}>
+                    <option value="draft">Draft</option>
+                    <option value="open">Open</option>
+                    <option value="closed">Closed</option>
+                    <option value="archived">Archived</option>
+                  </select>
+                  <p className="small muted" style={{ margin: "5px 0 0" }}>
+                    {editStatus === "open" ? "Responses are currently being accepted."
+                      : editStatus === "draft" ? "Nothing is collected until you open the campaign."
+                        : editStatus === "closed" ? "Collection is closed — results and reporting stay available."
+                          : "Hidden from the active campaign list."}
+                  </p>
+                </div>
+              </div>
+
+              {/* 2 — Privacy & segmentation */}
+              <div style={{ borderTop: "1px solid var(--line)", margin: "18px 0 0" }} />
+              <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "18px 0 8px" }}>
+                <span className="numchip sm">2</span><h2 style={{ margin: 0, fontSize: 16.5 }}>Privacy &amp; segmentation</h2>
+              </div>
+              <div className="grid2">
+                <div>
+                  <label className="f">Anonymity threshold</label>
+                  <div style={{ display: "flex", alignItems: "stretch", maxWidth: 200 }}>
+                    <button type="button" className="btn btn-ghost" style={{ borderRadius: "10px 0 0 10px", padding: "0 16px" }}
+                      onClick={() => setEditThreshold(String(Math.max(4, Number(editThreshold || 5) - 1)))}>−</button>
+                    <input type="text" inputMode="numeric" value={editThreshold} style={{ borderRadius: 0, textAlign: "center" }}
+                      onChange={(e) => setEditThreshold(e.target.value.replace(/\D/g, ""))} />
+                    <button type="button" className="btn btn-ghost" style={{ borderRadius: "0 10px 10px 0", padding: "0 16px" }}
+                      onClick={() => setEditThreshold(String(Number(editThreshold || 5) + 1))}>+</button>
+                  </div>
+                  <p className="small muted" style={{ margin: "6px 0 0" }}>
+                    🛡 Results for a group or segment appear only after {Math.max(4, Number(editThreshold || 5))} responses. Minimum 4.
+                  </p>
+                </div>
+                <div>
+                  <label className="f">Segments</label>
+                  <p className="small muted" style={{ margin: "0 0 7px" }}>Optional departments or sites respondents can select.</p>
+                  <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
+                    {segList.map((sg) => (
+                      <span key={sg} className="pill closed" style={{ display: "inline-flex", alignItems: "center", gap: 6, textTransform: "none", fontSize: 12.5 }}>
+                        {sg}
+                        <button type="button" onClick={() => setSegList((l) => l.filter((x) => x !== sg))}
+                          style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 0, lineHeight: 1 }}>×</button>
+                      </span>
+                    ))}
+                    {segNew === null ? (
+                      <button type="button" onClick={() => setSegNew("")}
+                        style={{ border: "1.5px dashed var(--primary)", color: "var(--primary)", background: "none", borderRadius: 9, padding: "5px 12px", fontWeight: 600, cursor: "pointer", fontSize: 12.5 }}>
+                        ＋ Add segment
+                      </button>
+                    ) : (
+                      <input type="text" autoFocus value={segNew} onChange={(e) => setSegNew(e.target.value)} placeholder="Segment name"
+                        style={{ width: 160, padding: "5px 10px", fontSize: 13 }}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); const v = segNew.trim(); if (v && !segList.includes(v)) setSegList((l) => [...l, v]); setSegNew(null); } if (e.key === "Escape") setSegNew(null); }}
+                        onBlur={() => { const v = (segNew || "").trim(); if (v && !segList.includes(v)) setSegList((l) => [...l, v]); setSegNew(null); }} />
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* 3 — Respondent experience */}
+              <div style={{ borderTop: "1px solid var(--line)", margin: "18px 0 0" }} />
+              <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "18px 0 8px" }}>
+                <span className="numchip sm">3</span><h2 style={{ margin: 0, fontSize: 16.5 }}>Respondent experience</h2>
+              </div>
+              <div className="grid2">
+                <div>
+                  <label className="f">Thank-you message <span className="pill closed" style={{ textTransform: "none", marginLeft: 6 }}>Optional</span></label>
+                  <textarea maxLength={300} value={editThanks} onChange={(e) => setEditThanks(e.target.value)}
+                    placeholder="Default: Your responses have been recorded anonymously." />
+                  <p className="small muted" style={{ margin: "4px 0 0" }}>{editThanks.length} / 300</p>
+                </div>
+                <div>
+                  <label className="f">Closed campaign message <span className="pill closed" style={{ textTransform: "none", marginLeft: 6 }}>Optional</span></label>
+                  <textarea maxLength={300} value={editClosedMsg} onChange={(e) => setEditClosedMsg(e.target.value)}
+                    placeholder="Default: This assessment is not currently open." />
+                  <p className="small muted" style={{ margin: "4px 0 0" }}>{editClosedMsg.length} / 300</p>
+                </div>
               </div>
             </div>
-            <label className="f">Segments <span className="muted">(optional — comma-separated departments/sites; adds an optional self-declared question for respondents, reported only above the anonymity threshold)</span></label>
-            <input type="text" value={editSegs} onChange={(e) => setEditSegs(e.target.value)}
-              placeholder="e.g. Operations, Sales, Engineering, Head office" />
-            <label className="f">Thank-you message <span className="muted">(optional)</span></label>
-            <textarea value={editThanks} onChange={(e) => setEditThanks(e.target.value)}
-              placeholder="Default: Your responses have been recorded anonymously." />
-            <label className="f">Closed message <span className="muted">(optional)</span></label>
-            <textarea value={editClosedMsg} onChange={(e) => setEditClosedMsg(e.target.value)}
-              placeholder="Default: This assessment is not currently open." />
-            <div style={{ marginTop: 14 }}>
-              <button className="btn btn-primary btn-sm" disabled={busy}>Save settings</button>
-              {saved ? <span className="small" style={{ color: "var(--green)", marginLeft: 10 }}>Saved ✓</span> : null}
+
+            <div style={{ background: "#fbf7ef", borderTop: "1px solid var(--line)", padding: "14px 26px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <span className="small muted">Changes affect this campaign only.{saved ? <span style={{ color: "var(--green, #2f855a)", marginLeft: 10, fontWeight: 600 }}>Saved ✓</span> : null}</span>
+              <span style={{ display: "flex", gap: 10 }}>
+                <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => load()}>Cancel</button>
+                <button className="btn btn-primary" disabled={busy}>{busy ? "Saving…" : "Save changes"}</button>
+              </span>
             </div>
           </form>
         </div>
