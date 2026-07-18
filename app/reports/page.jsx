@@ -27,6 +27,9 @@ export default function Reports() {
   const [camps, setCamps] = useState([]);
   const [reports, setReports] = useState([]);
   const [interps, setInterps] = useState([]);
+  const [content, setContent] = useState({ client_context: "", engagement_objective: "" });
+  const [notes, setNotes] = useState({}); // pillar -> body
+  const [saved, setSaved] = useState(false);
   const [genFor, setGenFor] = useState("");
   const [q, setQ] = useState("");
   const [fCamp, setFCamp] = useState("all");
@@ -38,7 +41,7 @@ export default function Reports() {
     if (!u.user) { router.replace("/login"); return; }
     setUser(u.user);
     const [{ data: cs }, { data: rs }, { data: ip }] = await Promise.all([
-      sb().from("fs_campaigns").select("id, name, status, created_at").order("created_at", { ascending: false }),
+      sb().from("fs_campaigns").select("id, name, status, created_at, client_context, engagement_objective").order("created_at", { ascending: false }),
       sb().from("fs_reports").select("*").order("created_at", { ascending: false }),
       sb().from("fs_interpretations").select("scope, band, body, version"),
     ]);
@@ -48,6 +51,37 @@ export default function Reports() {
   useEffect(() => { load(); }, [load]);
 
   const campName = (id) => camps.find((c) => c.id === id)?.name || "—";
+  const PILLARS = [["sii", "Strategic Innovation Intent"], ["iem", "Innovation Environment"], ["oic", "Organisational Capability"], ["ipm", "Process Management"], ["roi", "Return on Innovation"]];
+
+  // load authored content when the selected campaign changes
+  useEffect(() => {
+    (async () => {
+      if (!genFor) return;
+      const c = camps.find((x) => x.id === genFor);
+      setContent({ client_context: c?.client_context || "", engagement_objective: c?.engagement_objective || "" });
+      const { data: pn } = await sb().from("fs_pillar_notes").select("pillar, body").eq("campaign_id", genFor);
+      setNotes(Object.fromEntries((pn || []).map((x) => [x.pillar, x.body])));
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [genFor, camps.length]);
+
+  async function saveContent() {
+    setBusy(true); setSaved(false); setErr("");
+    const { error: e1 } = await sb().from("fs_campaigns").update({
+      client_context: content.client_context.trim() || null,
+      engagement_objective: content.engagement_objective.trim() || null,
+    }).eq("id", genFor);
+    let e2 = null;
+    for (const [pid] of PILLARS) {
+      const body = (notes[pid] || "").trim();
+      const { error } = await sb().from("fs_pillar_notes").upsert(
+        { campaign_id: genFor, pillar: pid, body, updated_at: new Date().toISOString() },
+        { onConflict: "campaign_id,pillar" });
+      if (error) e2 = error;
+    }
+    if (e1 || e2) setErr((e1 || e2).message); else { setSaved(true); setTimeout(() => setSaved(false), 2000); }
+    setBusy(false);
+  }
 
   async function fetchResults(cid) {
     const { data: sess } = await sb().auth.getSession();
@@ -68,14 +102,28 @@ export default function Reports() {
     setBusy(true); setErr("");
     try {
       const d = await fetchResults(genFor);
-      const { data: revs } = await sb().from("fs_finding_reviews").select("rule_id").eq("campaign_id", genFor);
+      const { data: sess2 } = await sb().auth.getSession();
+      const [{ data: revs }, { data: pn }, vb] = await Promise.all([
+        sb().from("fs_finding_reviews").select("rule_id").eq("campaign_id", genFor),
+        sb().from("fs_pillar_notes").select("pillar, body").eq("campaign_id", genFor),
+        fetch(`${FN_BASE}/fs-responses-ops`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess2.session?.access_token}` },
+          body: JSON.stringify({ action: "report_comments", campaign_id: genFor }),
+        }).then((r) => (r.ok ? r.json() : { verbatims: [] })).catch(() => ({ verbatims: [] })),
+      ]);
       const approved = new Set((revs || []).map((x) => x.rule_id));
       const findings = evaluateFindings(d).filter((f) => approved.has(f.id));
+      const cRow = camps.find((x) => x.id === genFor);
       const snapshot = {
         generated_at: new Date().toISOString(),
         campaign: d.campaign, org: d.org, pillars: d.pillars, groups: d.groups,
         overall: d.overall, questions: d.questions || null,
         findings, rulebook: "v1.1", engine: "shared-gaps-v1",
+        client_context: content.client_context || cRow?.client_context || null,
+        engagement_objective: content.engagement_objective || cRow?.engagement_objective || null,
+        pillar_notes: Object.fromEntries((pn || []).filter((x) => x.body?.trim()).map((x) => [x.pillar, x.body])),
+        verbatims: vb.verbatims || [],
       };
       const body = JSON.stringify(snapshot);
       const checksum = await sha256(body);
@@ -172,6 +220,32 @@ export default function Reports() {
         <div className="stat"><span className="ic c-teal"><I.shield /></span><div><div className="k">Evidence packs</div><div className="v">{reports.filter((r) => r.rtype !== "executive").length}</div></div></div>
         <div className="stat"><span className="ic c-grey"><I.info /></span><div><div className="k">Scheduled delivery</div><div className="v" style={{ fontSize: 16 }}>planned</div><span className="small muted">arrives with recurring cycles</span></div></div>
       </div>
+
+      <details className="card">
+        <summary style={{ cursor: "pointer", fontWeight: 800, fontSize: 16 }}>
+          Report content — client context, objectives &amp; pillar summaries
+          <span className="small muted" style={{ marginLeft: 10, fontWeight: 500 }}>authored once per campaign, included in every generated report</span>
+        </summary>
+        <div style={{ marginTop: 12 }}>
+          <label className="f">Client context <span className="muted">(who they are, in their words — the report&apos;s introduction)</span></label>
+          <textarea value={content.client_context} onChange={(e) => setContent((c) => ({ ...c, client_context: e.target.value }))}
+            placeholder="e.g. A proudly South African technology solutions provider serving the financial, engineering and mining sectors for over 20 years…" />
+          <label className="f">Engagement objective <span className="muted">(why this assessment was commissioned)</span></label>
+          <textarea value={content.engagement_objective} onChange={(e) => setContent((c) => ({ ...c, engagement_objective: e.target.value }))}
+            placeholder="e.g. Establish an innovation-capability baseline to inform the innovation strategy and track progress in future cycles." />
+          {PILLARS.map(([pid, nm]) => (
+            <div key={pid}>
+              <label className="f">{nm} — summary of written responses <span className="muted">(analyst-written, optional)</span></label>
+              <textarea value={notes[pid] || ""} onChange={(e) => setNotes((n) => ({ ...n, [pid]: e.target.value }))}
+                placeholder="Themes in this pillar's written feedback — descriptive, no individual identifiable." />
+            </div>
+          ))}
+          <div style={{ marginTop: 10 }}>
+            <button className="btn btn-primary btn-sm" disabled={busy || !genFor} onClick={saveContent}>Save report content</button>
+            {saved ? <span className="small" style={{ color: "var(--green, #2f855a)", marginLeft: 10 }}>Saved ✓</span> : null}
+          </div>
+        </div>
+      </details>
 
       <div className="card">
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
