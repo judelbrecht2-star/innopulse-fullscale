@@ -43,6 +43,7 @@ export default function Campaign() {
   const [editCloses, setEditCloses] = useState("");
   const [editThanks, setEditThanks] = useState("");
   const [editClosedMsg, setEditClosedMsg] = useState("");
+  const [editSegs, setEditSegs] = useState("");
   const [saved, setSaved] = useState(false);
   const [qr, setQr] = useState(null);
   const [uniqGroup, setUniqGroup] = useState("");
@@ -55,7 +56,7 @@ export default function Campaign() {
     if (!u.user) { router.replace("/login"); return; }
     setUser(u.user);
     const { data: camp, error: e1 } = await sb().from("fs_campaigns")
-      .select("id, org_id, name, status, opens_at, closes_at, anonymity_threshold, thankyou_message, closed_message").eq("id", id).maybeSingle();
+      .select("id, org_id, name, status, opens_at, closes_at, anonymity_threshold, thankyou_message, closed_message, segments").eq("id", id).maybeSingle();
     if (e1 || !camp) { setErr(e1 ? e1.message : "Campaign not found (or you don't have access)."); return; }
     // F8: resolve the caller's OWN role in THIS campaign's org
     const { data: mem } = await sb().from("fs_memberships").select("role")
@@ -67,6 +68,7 @@ export default function Campaign() {
     setEditCloses(camp.closes_at ? camp.closes_at.slice(0, 10) : "");
     setEditThanks(camp.thankyou_message || "");
     setEditClosedMsg(camp.closed_message || "");
+    setEditSegs((camp.segments || []).join(", "));
     const [{ data: gs }, { data: ls }, { data: lib }] = await Promise.all([
       sb().from("fs_groups").select("id, type, label, target_n").eq("campaign_id", id),
       sb().from("fs_links").select("id, group_id, token, mode, active, used_count, max_uses").eq("campaign_id", id).order("created_at"),
@@ -116,6 +118,7 @@ export default function Campaign() {
       anonymity_threshold: Math.max(4, Number(editThreshold || 5)),
       thankyou_message: editThanks.trim() || null,
       closed_message: editClosedMsg.trim() || null,
+      segments: editSegs.trim() ? editSegs.split(",").map((x) => x.trim()).filter(Boolean).slice(0, 30) : null,
     };
     if (editCloses) upd.closes_at = new Date(editCloses + "T23:59:59").toISOString();
     const { error } = await sb().from("fs_campaigns").update(upd).eq("id", id);
@@ -441,6 +444,9 @@ export default function Campaign() {
                   onChange={(e) => setEditCloses(e.target.value)} />
               </div>
             </div>
+            <label className="f">Segments <span className="muted">(optional — comma-separated departments/sites; adds an optional self-declared question for respondents, reported only above the anonymity threshold)</span></label>
+            <input type="text" value={editSegs} onChange={(e) => setEditSegs(e.target.value)}
+              placeholder="e.g. Operations, Sales, Engineering, Head office" />
             <label className="f">Thank-you message <span className="muted">(optional)</span></label>
             <textarea value={editThanks} onChange={(e) => setEditThanks(e.target.value)}
               placeholder="Default: Your responses have been recorded anonymously." />
