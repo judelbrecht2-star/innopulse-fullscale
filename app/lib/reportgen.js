@@ -192,6 +192,24 @@ export async function generateWordReport(rep, interps) {
     b.push(P("Gaps of this kind rarely mean one group is wrong; they usually mean the groups are describing different objects — policy as designed versus practice as experienced, or work as visible from the top versus as lived below. Where a gap exceeds 25 points the relevant finding in the register sets out competing explanations and the validation step to run before acting."));
   } else b.push(P("Not enough visible groups (or shared questions) yet for a fair comparison."));
 
+  // ---- trend (Step 5; cycle-over-cycle) ----
+  const tr = s.trend;
+  if (tr && tr.overall?.d != null) {
+    b.push(H("Progress since the previous assessment"));
+    const dirWord = tr.overall.d > 0 ? "improved" : tr.overall.d < 0 ? "declined" : "held steady";
+    b.push(P(`Compared with ${tr.priorName}, the overall Innovation Capability Index ${dirWord} from ${tr.overall.prev} to ${tr.overall.cur} (${tr.overall.d > 0 ? "+" : ""}${tr.overall.d} points; n ${tr.n.prev} → ${tr.n.cur}).${tr.best && tr.best.d > 0 ? ` The strongest movement was ${tr.best.short} (${tr.best.d > 0 ? "+" : ""}${tr.best.d}).` : ""}${tr.worst && tr.worst.d < 0 ? ` The largest decline was ${tr.worst.short} (${tr.worst.d}).` : ""}`));
+    const rows = [new TableRow({ children: [TC("Pillar", 3400, { b: true, fill: "F4F1EC" }), TC("Previous", 1500, { b: true, fill: "F4F1EC" }), TC("Current", 1500, { b: true, fill: "F4F1EC" }), TC("Change", 1500, { b: true, fill: "F4F1EC" })] })];
+    tr.pillars.forEach((p) => rows.push(new TableRow({ children: [
+      TC(p.short, 3400), TC(p.prev ?? "—", 1500), TC(p.cur ?? "—", 1500),
+      TC(p.d == null ? "—" : (p.d > 0 ? `▲ +${p.d}` : p.d < 0 ? `▼ ${p.d}` : "0"), 1500, { b: true, c: p.d == null ? GREY : p.d > 0 ? GREEN : p.d < 0 ? CORAL : GREY }),
+    ] })));
+    b.push(new Table({ columnWidths: [3400, 1500, 1500, 1500], width: { size: 7900, type: WidthType.DXA }, rows }));
+    b.push(CAP("Table: Pillar movement between assessment cycles."));
+    if (!tr.comparable) b.push(P(`Comparability caveat: the two cycles used different questionnaire versions (${tr.priorVersion || "?"} → ${tr.curVersion || "?"}). Treat movements as directional rather than exact.`, { i: true, c: AMBER }));
+    const gmoves = (tr.groups || []).filter((g) => g.d != null);
+    if (gmoves.length) b.push(P("By stakeholder group (average pillar movement): " + gmoves.map((g) => `${g.label || g.type} ${g.d > 0 ? "+" : ""}${g.d}`).join(" · ") + "."));
+  }
+
   // ---- segment cuts (Step 4; threshold-protected) ----
   const segs = (s.segments || []).filter((x) => !x.info);
   if (segs.length) {
