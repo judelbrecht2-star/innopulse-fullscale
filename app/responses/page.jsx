@@ -473,11 +473,36 @@ export default function Responses() {
                           ) : cm.in_report ? <span className="pill teal" style={{ marginLeft: "auto" }}>In report</span> : null}
                         </div>
                         <p>{cm.body}</p>
+                        {canManage || role === "analyst" ? (
+                          <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                            <input type="text" defaultValue={(cm.themes || []).join(", ")} placeholder="Themes, comma-separated — e.g. workload, recognition"
+                              style={{ flex: 1, fontSize: 12.5, padding: "5px 9px" }}
+                              onBlur={async (e) => {
+                                const themes = e.target.value.split(",").map((x) => x.trim()).filter(Boolean);
+                                if (themes.join("|") === (cm.themes || []).join("|")) return;
+                                try {
+                                  const { data: sess } = await sb().auth.getSession();
+                                  const r = await fetch(`${FN_BASE}/fs-responses-ops`, {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess.session?.access_token}` },
+                                    body: JSON.stringify({ action: "tag_comment", campaign_id: sel, comment_id: cm.id, themes }),
+                                  });
+                                  const j = await r.json();
+                                  if (r.ok) setDetail((d) => ({ ...d, comments: d.comments.map((x) => x.id === cm.id ? { ...x, themes: j.themes } : x) }));
+                                  else setErr(j.error || "Could not save themes.");
+                                } catch { setErr("Could not save themes."); }
+                              }} />
+                          </div>
+                        ) : (cm.themes || []).length ? (
+                          <p className="small muted" style={{ margin: "6px 0 0" }}>Themes: {cm.themes.join(", ")}</p>
+                        ) : null}
                       </div>
                     ))}
                   <p className="small muted" style={{ margin: "6px 0 0" }}>
                     &quot;Add to report&quot; marks a verbatim for inclusion in generated reports —
-                    always attributed to the stakeholder group only, never to an individual.
+                    always attributed to the stakeholder group only, never to an individual. Themes
+                    you type here (saved when you click away) build the evidenced theme tables in
+                    each report&apos;s pillar chapters.
                   </p>
                 </>
               );
