@@ -110,13 +110,14 @@ export default function Reports() {
         body: JSON.stringify({ action, campaign_id: genFor }),
       }).then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
       const [{ data: revs }, { data: pn }, vb, th] = await Promise.all([
-        sb().from("fs_finding_reviews").select("rule_id").eq("campaign_id", genFor),
+        sb().from("fs_finding_reviews").select("rule_id, note_contradictory, note_alternative").eq("campaign_id", genFor),
         sb().from("fs_pillar_notes").select("pillar, body").eq("campaign_id", genFor),
         opsCall("report_comments"),
         opsCall("theme_summary"),
       ]);
-      const approved = new Set((revs || []).map((x) => x.rule_id));
-      const findings = evaluateFindings(d).filter((f) => approved.has(f.id));
+      const revMap = Object.fromEntries((revs || []).map((x) => [x.rule_id, x]));
+      const findings = evaluateFindings(d).filter((f) => revMap[f.id])
+        .map((f) => ({ ...f, analyst: { contradictory: revMap[f.id].note_contradictory || null, alternative: revMap[f.id].note_alternative || null } }));
       const cRow = camps.find((x) => x.id === genFor);
       // Step 5: cycle-over-cycle trend, frozen into the snapshot
       let trend = null;
@@ -136,6 +137,7 @@ export default function Reports() {
         pillar_notes: Object.fromEntries((pn || []).filter((x) => x.body?.trim()).map((x) => [x.pillar, x.body])),
         verbatims: vb.verbatims || [],
         comment_themes: th.themes || [],
+        comment_meta: { commenters: th.commenters ?? null, respondents: th.respondents ?? null },
       };
       const body = JSON.stringify(snapshot);
       const checksum = await sha256(body);
