@@ -447,11 +447,38 @@ export default function Responses() {
                   <h2 style={{ fontSize: 15, margin: "18px 0 8px" }}>Written responses ({(detail.comments || []).length})</h2>
                   {(detail.comments || []).length === 0 ? <p className="muted small">None left.</p> :
                     (detail.comments || []).map((cm, i) => (
-                      <div className="vcard" key={i}>
-                        <div className="ph"><span className="pn">{PILLAR_NAMES[cm.pillar] || cm.pillar}</span><span className="tag">Verbatim response</span></div>
+                      <div className="vcard" key={cm.id || i}>
+                        <div className="ph">
+                          <span className="pn">{PILLAR_NAMES[cm.pillar] || cm.pillar}</span>
+                          <span className="tag">Verbatim response</span>
+                          {canManage || role === "analyst" ? (
+                            <button className="btn btn-ghost btn-sm" disabled={busy} style={{ marginLeft: "auto" }}
+                              onClick={async () => {
+                                setBusy(true);
+                                try {
+                                  const { data: sess } = await sb().auth.getSession();
+                                  const r = await fetch(`${FN_BASE}/fs-responses-ops`, {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess.session?.access_token}` },
+                                    body: JSON.stringify({ action: "flag_comment", campaign_id: sel, comment_id: cm.id, in_report: !cm.in_report }),
+                                  });
+                                  const j = await r.json();
+                                  if (r.ok) setDetail((d) => ({ ...d, comments: d.comments.map((x) => x.id === cm.id ? { ...x, in_report: j.in_report } : x) }));
+                                  else setErr(j.error || "Could not update.");
+                                } catch { setErr("Could not update."); }
+                                setBusy(false);
+                              }}>
+                              {cm.in_report ? "✓ In report — remove" : "＋ Add to report"}
+                            </button>
+                          ) : cm.in_report ? <span className="pill teal" style={{ marginLeft: "auto" }}>In report</span> : null}
+                        </div>
                         <p>{cm.body}</p>
                       </div>
                     ))}
+                  <p className="small muted" style={{ margin: "6px 0 0" }}>
+                    &quot;Add to report&quot; marks a verbatim for inclusion in generated reports —
+                    always attributed to the stakeholder group only, never to an individual.
+                  </p>
                 </>
               );
             })()}
