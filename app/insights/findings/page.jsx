@@ -10,6 +10,22 @@ import TagGlossary from "../../lib/TagGlossary";
 function csvEsc(v) { const s = String(v ?? ""); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
 const PRI = { 3: "P3 · Urgent", 2: "P2 · Material", 1: "P1 · Monitor" };
 const PRIC = { 3: "var(--primary)", 2: "var(--amber, #b7791f)", 1: "var(--muted)" };
+const ISO_LABEL = { 4: "Context", 5: "Leadership", 6: "Planning", 7: "Support", 8: "Operation", 9: "Performance evaluation", 10: "Improvement" };
+const CONF_ORDER = ["High", "Medium-High", "Medium"];
+
+function Chip({ label, count, on, color, onClick }) {
+  return (
+    <button type="button" onClick={onClick} style={{
+      display: "inline-flex", alignItems: "center", gap: 7, cursor: "pointer",
+      border: on ? "1.5px solid var(--primary)" : "1px solid var(--line)",
+      background: on ? "var(--primary-soft, #fdeeee)" : "#fff",
+      borderRadius: 10, padding: "7px 12px", fontWeight: 650, fontSize: 13, color: color || "inherit",
+    }}>
+      {label}
+      <span style={{ background: on ? "#fff" : "var(--bg2, #f4f1ec)", borderRadius: 99, padding: "1px 8px", fontSize: 11.5, color: "var(--ink, #17171a)", fontWeight: 700 }}>{count}</span>
+    </button>
+  );
+}
 
 export default function FindingsWorkbench() {
   const router = useRouter();
@@ -22,6 +38,8 @@ export default function FindingsWorkbench() {
   const [q, setQ] = useState("");
   const [fPri, setFPri] = useState(0); // 0=all
   const [fClass, setFClass] = useState("all");
+  const [fIso, setFIso] = useState(""); // "" = all clauses
+  const [sortBy, setSortBy] = useState("pri"); // pri | conf | rev
   const [cur, setCur] = useState(null); // finding id
   const [busy, setBusy] = useState(false);
 
@@ -57,9 +75,11 @@ export default function FindingsWorkbench() {
   useEffect(() => { load(sel); }, [sel, load]);
 
   const findings = results ? evaluateFindings(results) : [];
+  const clauseOf = (f) => ((f.iso || "").match(/Clause (\d+)/) || [])[1] || "";
   const filtered = findings.filter((f) => {
     if (fPri && f.severity !== fPri) return false;
     if (fClass !== "all" && f.klass !== fClass) return false;
+    if (fIso && clauseOf(f) !== fIso) return false;
     if (q.trim()) {
       const n = q.trim().toLowerCase();
       if (!(f.title + " " + f.text + " " + (f.iso || "") + " " + f.evidence.join(" ")).toLowerCase().includes(n)) return false;
@@ -69,6 +89,20 @@ export default function FindingsWorkbench() {
   const active = filtered.find((f) => f.id === cur) || filtered[0] || null;
   const nOf = (s) => findings.filter((f) => f.severity === s).length;
   const nObs = findings.filter((f) => f.klass === CLASS.OBS).length;
+  const nSup = findings.filter((f) => f.klass === CLASS.SUP).length;
+  const nHyp = findings.filter((f) => f.klass === CLASS.HYP).length;
+  const isoNums = [...new Set(findings.map(clauseOf).filter(Boolean))].sort((a, b) => Number(a) - Number(b));
+  const allOn = fPri === 0 && fClass === "all" && !fIso;
+  // Grouped list order depends on the sort selector
+  const bySev = (a, b) => b.severity - a.severity;
+  const groups = sortBy === "conf"
+    ? CONF_ORDER.map((c) => ({ key: c, label: "Confidence · " + c, color: "var(--ink, #17171a)", items: filtered.filter((f) => f.confidence === c).sort(bySev) }))
+    : sortBy === "rev"
+      ? [
+        { key: "todo", label: "Awaiting review", color: "var(--primary)", items: filtered.filter((f) => !reviews[f.id]).sort(bySev) },
+        { key: "done", label: "Reviewed ✓", color: "var(--muted)", items: filtered.filter((f) => !!reviews[f.id]).sort(bySev) },
+      ]
+      : [3, 2, 1].map((s) => ({ key: s, label: PRI[s], color: PRIC[s], items: filtered.filter((f) => f.severity === s) }));
 
   async function toggleReview(f) {
     setBusy(true);
@@ -124,14 +158,23 @@ export default function FindingsWorkbench() {
         <div className="stat"><span className="ic c-violet"><I.shield /></span><div><div className="k">Evidence classes</div><div className="v" style={{ fontSize: 17 }}>{nObs} observed · {findings.length - nObs} interpreted</div></div></div>
       </div>
 
-      <div className="card" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <input type="text" placeholder="Search findings, questions or ISO clauses" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 220 }} />
-        <select value={fPri} onChange={(e) => setFPri(Number(e.target.value))} style={{ width: "auto" }}>
-          <option value={0}>All priorities</option><option value={3}>P3 · Urgent</option><option value={2}>P2 · Material</option><option value={1}>P1 · Monitor</option>
+      <div className="card" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <input type="text" placeholder="Search findings, questions or ISO clauses" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
+        <Chip label="All" count={findings.length} on={allOn} onClick={() => { setFPri(0); setFClass("all"); setFIso(""); }} />
+        <Chip label="P3 Urgent" color={PRIC[3]} count={nOf(3)} on={fPri === 3} onClick={() => setFPri(fPri === 3 ? 0 : 3)} />
+        <Chip label="P2 Material" color={PRIC[2]} count={nOf(2)} on={fPri === 2} onClick={() => setFPri(fPri === 2 ? 0 : 2)} />
+        <Chip label="P1 Monitor" color={PRIC[1]} count={nOf(1)} on={fPri === 1} onClick={() => setFPri(fPri === 1 ? 0 : 1)} />
+        <Chip label="Observed" color="var(--band-med)" count={nObs} on={fClass === CLASS.OBS} onClick={() => setFClass(fClass === CLASS.OBS ? "all" : CLASS.OBS)} />
+        <Chip label="Supported" color="var(--amber, #b7791f)" count={nSup} on={fClass === CLASS.SUP} onClick={() => setFClass(fClass === CLASS.SUP ? "all" : CLASS.SUP)} />
+        {nHyp ? <Chip label="Hypothesis" color="var(--muted)" count={nHyp} on={fClass === CLASS.HYP} onClick={() => setFClass(fClass === CLASS.HYP ? "all" : CLASS.HYP)} /> : null}
+        <select value={fIso} onChange={(e) => setFIso(e.target.value)} style={{ width: "auto" }}>
+          <option value="">ISO clause</option>
+          {isoNums.map((n) => <option key={n} value={n}>Clause {n}{ISO_LABEL[n] ? ` · ${ISO_LABEL[n]}` : ""}</option>)}
         </select>
-        <select value={fClass} onChange={(e) => setFClass(e.target.value)} style={{ width: "auto" }}>
-          <option value="all">All classes</option>
-          {[CLASS.OBS, CLASS.SUP, CLASS.HYP].map((k) => <option key={k} value={k}>{k}</option>)}
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ width: "auto" }}>
+          <option value="pri">Priority first</option>
+          <option value="conf">Confidence first</option>
+          <option value="rev">Unreviewed first</option>
         </select>
       </div>
 
@@ -142,13 +185,14 @@ export default function FindingsWorkbench() {
           <style>{`@media(max-width:1000px){.wbgrid{grid-template-columns:1fr!important}}`}</style>
 
           <div className="card" style={{ padding: 12 }}>
-            <h2 style={{ margin: "6px 8px 8px" }}>Ranked findings</h2>
-            {[3, 2, 1].map((s) => {
-              const grp = filtered.filter((f) => f.severity === s);
+            <h2 style={{ margin: "6px 8px 8px" }}>Ranked findings {filtered.length !== findings.length ? <span className="small muted" style={{ fontWeight: 400 }}>— {filtered.length} of {findings.length} shown</span> : null}</h2>
+            {!filtered.length ? <p className="small muted" style={{ margin: "4px 8px 10px" }}>Nothing matches the current filters — clear a chip or the search box.</p> : null}
+            {groups.map((g) => {
+              const grp = g.items;
               if (!grp.length) return null;
               return (
-                <div key={s}>
-                  <div className="small" style={{ fontWeight: 800, color: PRIC[s], margin: "10px 8px 4px", textTransform: "uppercase", letterSpacing: ".5px" }}>{PRI[s]}</div>
+                <div key={g.key}>
+                  <div className="small" style={{ fontWeight: 800, color: g.color, margin: "10px 8px 4px", textTransform: "uppercase", letterSpacing: ".5px" }}>{g.label}</div>
                   {grp.map((f) => (
                     <button key={f.id} onClick={() => setCur(f.id)} style={{
                       display: "block", width: "100%", textAlign: "left", cursor: "pointer",
