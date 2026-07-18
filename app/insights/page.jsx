@@ -39,6 +39,9 @@ export default function Insights() {
   const [err, setErr] = useState("");
   const [gA, setGA] = useState("executive");
   const [gB, setGB] = useState("employee");
+  const [dimSel, setDimSel] = useState("");
+  const [dA, setDA] = useState("");
+  const [dB, setDB] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -104,6 +107,22 @@ export default function Insights() {
   }, [results]);
 
   const A = visByType[gA], B = visByType[gB];
+
+  // Demographic lens: cuts arrive threshold-protected from fs-results v7
+  const demoDims = (results?.demographics || []).filter((d) => (d.options || []).length);
+  const curDim = demoDims.find((d) => d.id === dimSel) || demoDims[0] || null;
+  useEffect(() => {
+    if (!curDim) return;
+    if (dimSel !== curDim.id) setDimSel(curDim.id);
+    const vis = curDim.options.filter((o) => !o.suppressed);
+    if (vis.length >= 2) {
+      if (!vis.some((o) => o.name === dA)) setDA(vis[0].name);
+      if (!vis.some((o) => o.name === dB) || dB === dA) setDB((vis.find((o) => o.name !== (vis.some((x) => x.name === dA) ? dA : vis[0].name)) || vis[1]).name);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results, dimSel]);
+  const dOptA = curDim?.options.find((o) => o.name === dA && !o.suppressed) || null;
+  const dOptB = curDim?.options.find((o) => o.name === dB && !o.suppressed) || null;
 
   // F2: compare the pair ONLY on questions both groups answered
   const shared = results ? sharedPillarScores(results.questions, pillars, gA, gB) : {};
@@ -271,6 +290,92 @@ export default function Insights() {
           ) : null}
         </div>
       </div>
+
+      {demoDims.length ? (
+        <div className="card">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+            <h2 style={{ margin: 0 }}>Demographic lens</h2>
+            <select value={curDim?.id || ""} onChange={(e) => { setDimSel(e.target.value); setDA(""); setDB(""); }} style={{ width: "auto", fontSize: 13, fontWeight: 600 }}>
+              {demoDims.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+            </select>
+          </div>
+          <p className="small muted" style={{ margin: "6px 0 12px" }}>
+            Scores by {curDim?.label.toLowerCase()}. Groupings below the anonymity threshold stay hidden;
+            respondents could always choose &quot;prefer not to say&quot;.
+          </p>
+          <table className="t">
+            <thead>
+              <tr><th>{curDim?.label}</th><th>N</th>{pillars.map((p) => <th key={p.id}>{p.short}</th>)}<th>Score</th></tr>
+            </thead>
+            <tbody>
+              {(curDim?.options || []).map((o) => (
+                <tr key={o.name}>
+                  <td><b>{o.name}</b></td>
+                  <td>{o.n}</td>
+                  {o.suppressed ? (
+                    <td colSpan={pillars.length + 1}>
+                      <div className="lockrow">🔒 Hidden until at least {results?.campaign?.anonymity_threshold} responses</div>
+                    </td>
+                  ) : (
+                    <>
+                      {pillars.map((p) => (
+                        <td key={p.id}>{o.pillars?.[p.id] == null ? <span className="muted">—</span> : <span className={"schip " + bandChip(o.pillars[p.id])}>{o.pillars[p.id]}</span>}</td>
+                      ))}
+                      <td><b>{o.score ?? "—"}</b></td>
+                    </>
+                  )}
+                </tr>
+              ))}
+              {curDim?.not_declared ? (
+                <tr><td className="muted">Prefer not to say</td><td className="muted">{curDim.not_declared}</td><td colSpan={pillars.length + 1} className="small muted">not included in cuts</td></tr>
+              ) : null}
+            </tbody>
+          </table>
+
+          {dOptA && dOptB && dOptA.name !== dOptB.name ? (
+            <div style={{ marginTop: 16, borderTop: "1px solid var(--line)", paddingTop: 14 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <b style={{ fontSize: 14 }}>Compare:</b>
+                <select value={dA} onChange={(e) => setDA(e.target.value)} style={{ width: "auto", fontSize: 13 }}>
+                  {curDim.options.filter((o) => !o.suppressed).map((o) => <option key={o.name} value={o.name} disabled={o.name === dB}>{o.name}</option>)}
+                </select>
+                <span className="small muted">vs</span>
+                <select value={dB} onChange={(e) => setDB(e.target.value)} style={{ width: "auto", fontSize: 13 }}>
+                  {curDim.options.filter((o) => !o.suppressed).map((o) => <option key={o.name} value={o.name} disabled={o.name === dA}>{o.name}</option>)}
+                </select>
+                {dOptA.score != null && dOptB.score != null ? (
+                  <span className="small" style={{ marginLeft: 6 }}>
+                    overall Δ <b style={{ color: Math.abs(dOptA.score - dOptB.score) >= 15 ? "var(--primary)" : "inherit" }}>
+                      {Math.round(Math.abs(dOptA.score - dOptB.score) * 10) / 10} pts
+                    </b>
+                  </span>
+                ) : null}
+              </div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+                {pillars.map((p) => {
+                  const a = dOptA.pillars?.[p.id], b = dOptB.pillars?.[p.id];
+                  if (a == null || b == null) return null;
+                  const d = Math.round(Math.abs(a - b) * 10) / 10;
+                  const hi = d >= 15;
+                  return (
+                    <span key={p.id} className="small" style={{ border: "1px solid " + (hi ? "var(--primary)" : "var(--line)"), borderRadius: 99, padding: "5px 12px", background: hi ? "rgba(214,80,60,.06)" : "transparent" }}>
+                      {p.short}: {a} vs {b} <b style={{ color: hi ? "var(--primary)" : "inherit" }}>Δ {d}</b>
+                    </span>
+                  );
+                })}
+              </div>
+              <p className="small muted" style={{ marginTop: 8 }}>
+                n = {dOptA.n} vs {dOptB.n}. Differences of 15+ points are highlighted — verify with the
+                groups before acting; demographic cuts are indicative at small sample sizes.
+              </p>
+            </div>
+          ) : curDim && curDim.options.filter((o) => !o.suppressed).length < 2 ? (
+            <p className="small muted" style={{ marginTop: 10 }}>
+              Comparison unlocks when at least two {curDim.label.toLowerCase()} groupings pass the anonymity threshold.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="card">
         <h2>Detailed stakeholder scores</h2>
