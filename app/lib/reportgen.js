@@ -6,6 +6,7 @@ import {
   Table, TableRow, TableCell, WidthType, BorderStyle, ShadingType, AlignmentType, Footer, PageNumber,
 } from "docx";
 import { bestGaps, MIN_N } from "./gaps";
+import { donutChart, distBarChart, pillarDistribution } from "./charts";
 
 const INK = "17171A", CORAL = "E8332E", TEAL = "0E8C8C", GREY = "6D6D76", LINE = "D9D9DE", AMBER = "B7791F", GREEN = "2F855A";
 const GROUP_LBL = { executive: "Executives", employee: "Employees", customer: "Customers", partner: "Partners", other: "Other" };
@@ -179,9 +180,19 @@ export async function generateWordReport(rep, interps) {
   b.push(H("Overall results"));
   if (overall) {
     b.push(P(`Overall Innovation Capability Index: ${overall.score} — ${bandWord(overall.score)}.`, { b: true, s: 24 }));
+    b.push(IMG(donutChart(overall.score, bandWord(overall.score)), 210, 210));
+    b.push(CAP("Figure 1: Overall Innovation Capability Index (coral tick marks the 70-point value-building benchmark)."));
     b.push(IMG(pillarChart(pillars, overall.pillars), 620, 290));
-    b.push(CAP("Figure 1: Pillar scores against the 70-point benchmark (weighted overall shown in the executive summary)."));
+    b.push(CAP("Figure 2: Pillar scores against the 70-point benchmark."));
     b.push(P(interp("overall", overall.score)));
+    // response distributions per pillar (item 1: honest polarisation view)
+    const vtypes = visible.map((g) => g.type);
+    const distRows = pillars.map((p) => ({ label: p.short, counts: pillarDistribution(s.questions, p.id, vtypes) }))
+      .filter((r) => r.counts.pos + r.counts.neu + r.counts.neg + r.counts.dkna > 0);
+    if (distRows.length) {
+      b.push(IMG(distBarChart(distRows), 620, Math.min(300, distRows.length * 36 + 40)));
+      b.push(CAP("Figure 3: How answers were distributed per pillar (all reported groups combined). Wide neutral or split bars indicate divided experience that the averages above conceal."));
+    }
   } else b.push(P("Suppressed pending sufficient responses."));
 
   // ---- gaps ----
@@ -253,6 +264,15 @@ export async function generateWordReport(rep, interps) {
       b.push(P(`Reviewed finding — ${f.title} (${f.klass}, confidence ${f.confidence})`, { b: true }));
       b.push(P(f.text));
     });
+    // coded verbatim themes (item 4) — evidenced counts, not just prose
+    const pth = (s.comment_themes || []).filter((t) => t.pillar === p.id);
+    if (pth.length) {
+      b.push(P("Written-response themes", { b: true, after: 40 }));
+      const rows = [new TableRow({ children: [TC("Theme", 4200, { b: true, fill: "F4F1EC" }), TC("Mentions", 1400, { b: true, fill: "F4F1EC" }), TC("Raised by", 3200, { b: true, fill: "F4F1EC" })] })];
+      pth.forEach((t) => rows.push(new TableRow({ children: [TC(t.theme, 4200), TC(t.count, 1400), TC((t.groups || []).join(", "), 3200, { s: 17 })] })));
+      b.push(new Table({ columnWidths: [4200, 1400, 3200], width: { size: 8800, type: WidthType.DXA }, rows }));
+      b.push(CAP("Themes coded by the assessment team on written responses from groups above the anonymity threshold."));
+    }
     // analyst summary of written responses (authored, Step 3)
     if (s.pillar_notes?.[p.id]) {
       b.push(P("Summary of written responses", { b: true, after: 40 }));
