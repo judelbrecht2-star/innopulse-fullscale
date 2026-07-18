@@ -13,6 +13,7 @@ export default function Respond() {
   const [comments, setComments] = useState({});
   const [restored, setRestored] = useState(false);
   const [segment, setSegment] = useState("");
+  const [demo, setDemo] = useState({});
   const [thanks, setThanks] = useState(null);
   const draftKey = "fs_draft_" + token;
   const doneKey = "fs_done_" + token;
@@ -113,7 +114,7 @@ export default function Respond() {
     try {
       const r = await fetch(`${FN_BASE}/fs-respond`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, answers, comments, consent: true, ref: clientRef(), segment: segment || null }),
+        body: JSON.stringify({ token, answers, comments, consent: true, ref: clientRef(), segment: segment || null, demo }),
       });
       const j = await r.json();
       if (r.status === 409) {
@@ -214,7 +215,34 @@ export default function Respond() {
         </div>
       ) : null}
 
-      {data.campaign?.segments?.length ? (
+      {Array.isArray(data.campaign?.demographics) && data.campaign.demographics.length ? (
+        <section>
+          <div className="pilhead">
+            <div className="n">About you</div>
+            <h2>A little context (all optional)</h2>
+            <div className="small muted">
+              Every question below is optional. Answers are used only for group-level analysis —
+              any grouping with too few people is automatically hidden, so you can never be
+              singled out.
+            </div>
+          </div>
+          <div className="qblock" style={{ display: "grid", gap: 14 }}>
+            {data.campaign.demographics.map((dim) => (
+              <div key={dim.id}>
+                <label className="f">{dim.question || dim.label}</label>
+                <select
+                  value={demo[dim.id] || ""}
+                  onChange={(e) => setDemo((d) => ({ ...d, [dim.id]: e.target.value }))}
+                  style={{ maxWidth: 340 }}
+                >
+                  <option value="">Prefer not to say</option>
+                  {(dim.options || []).map((o) => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : data.campaign?.segments?.length ? (
         <div className="qblock">
           <div className="qtext">Which area do you work in / deal with? <span className="muted">(optional — used only for group-level analysis, hidden below the anonymity threshold)</span></div>
           <select value={segment} onChange={(e) => setSegment(e.target.value)} style={{ maxWidth: 340 }}>
