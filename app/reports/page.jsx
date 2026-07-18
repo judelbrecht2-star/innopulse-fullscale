@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { sb, FN_BASE } from "../../lib/supabase";
 import { Shell, I, groupName } from "../ui";
 import { evaluateFindings } from "../lib/findings";
+import { generateWordReport } from "../lib/reportgen";
 
 const TYPES = {
   executive: { label: "Executive", pill: "violet", desc: "Board-ready web report (print / save as PDF)" },
@@ -25,6 +26,7 @@ export default function Reports() {
   const [user, setUser] = useState(null);
   const [camps, setCamps] = useState([]);
   const [reports, setReports] = useState([]);
+  const [interps, setInterps] = useState([]);
   const [genFor, setGenFor] = useState("");
   const [q, setQ] = useState("");
   const [fCamp, setFCamp] = useState("all");
@@ -35,11 +37,12 @@ export default function Reports() {
     const { data: u } = await sb().auth.getUser();
     if (!u.user) { router.replace("/login"); return; }
     setUser(u.user);
-    const [{ data: cs }, { data: rs }] = await Promise.all([
+    const [{ data: cs }, { data: rs }, { data: ip }] = await Promise.all([
       sb().from("fs_campaigns").select("id, name, status, created_at").order("created_at", { ascending: false }),
       sb().from("fs_reports").select("*").order("created_at", { ascending: false }),
+      sb().from("fs_interpretations").select("scope, band, body, version"),
     ]);
-    setCamps(cs || []); setReports(rs || []);
+    setCamps(cs || []); setReports(rs || []); setInterps(ip || []);
     if (cs?.length) setGenFor(cs[0].id);
   }, [router]);
   useEffect(() => { load(); }, [load]);
@@ -194,6 +197,11 @@ export default function Reports() {
                   <td className="small muted">{new Date(r.created_at).toLocaleDateString()}</td>
                   <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                     <button className="btn btn-primary btn-sm" onClick={() => open(r)}>{r.rtype === "executive" ? "View" : "Download"}</button>{" "}
+                    {r.rtype === "executive" && r.snapshot ? (
+                      <><button className="btn btn-ghost btn-sm" disabled={busy}
+                        onClick={async () => { setBusy(true); try { await generateWordReport(r, interps); } catch (e) { setErr(String(e.message || e)); } setBusy(false); }}>
+                        Word (.docx)</button>{" "}</>
+                    ) : null}
                     <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => remove(r.id)}>Remove</button>
                   </td>
                 </tr>
