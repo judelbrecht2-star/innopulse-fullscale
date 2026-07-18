@@ -7,6 +7,7 @@ import { Shell, I, GROUP_META, GROUP_BAR, groupName } from "../ui";
 import { sharedPillarScores, MIN_ITEMS, MIN_N } from "../lib/gaps";
 import { evaluateFindings, CLASS } from "../lib/findings";
 import { computeTrend, fmtDelta, deltaColor } from "../lib/trends";
+import TagGlossary from "../lib/TagGlossary";
 
 function FindingCard({ f }) {
   const chip = f.klass === CLASS.OBS ? "teal" : f.klass === CLASS.SUP ? "draft" : "closed";
@@ -195,6 +196,7 @@ export default function Insights() {
             <h2 style={{ margin: 0 }}>Automatic findings</h2>
             <Link className="btn btn-primary btn-sm" href="/insights/findings">Review all {findings.length} findings →</Link>
           </div>
+          <TagGlossary />
           {findings.slice(0, 3).map((f) => <FindingCard key={f.id} f={f} />)}
           {findings.length > 3 ? (
             <p className="small muted" style={{ marginTop: 8 }}>
