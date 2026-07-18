@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { sb, FN_BASE } from "../../../lib/supabase";
 import { Shell, I, bandCls, bandWord, bandOf, GROUP_META, GROUP_BAR, groupName } from "../../ui";
 import { bestGaps, MIN_N } from "../../lib/gaps";
+import { DEMO_DIMS } from "../../lib/demographics";
 
 function randToken() {
   const b = new Uint8Array(8);
@@ -46,6 +47,8 @@ export default function Campaign() {
   const [editSegs, setEditSegs] = useState("");
   const [segList, setSegList] = useState([]);
   const [segNew, setSegNew] = useState(null); // string while typing a new segment
+  const [demoOn, setDemoOn] = useState({});
+  const [demoCustom, setDemoCustom] = useState({});
   const [editStatus, setEditStatus] = useState("");
   const [saved, setSaved] = useState(false);
   const [qr, setQr] = useState(null);
@@ -59,7 +62,7 @@ export default function Campaign() {
     if (!u.user) { router.replace("/login"); return; }
     setUser(u.user);
     const { data: camp, error: e1 } = await sb().from("fs_campaigns")
-      .select("id, org_id, name, status, opens_at, closes_at, anonymity_threshold, thankyou_message, closed_message, segments").eq("id", id).maybeSingle();
+      .select("id, org_id, name, status, opens_at, closes_at, anonymity_threshold, thankyou_message, closed_message, segments, demographics").eq("id", id).maybeSingle();
     if (e1 || !camp) { setErr(e1 ? e1.message : "Campaign not found (or you don't have access)."); return; }
     // F8: resolve the caller's OWN role in THIS campaign's org
     const { data: mem } = await sb().from("fs_memberships").select("role")
@@ -73,6 +76,14 @@ export default function Campaign() {
     setEditClosedMsg(camp.closed_message || "");
     setEditSegs((camp.segments || []).join(", "));
     setSegList(camp.segments || []);
+    // Demographics config → checklist + custom option lists
+    const dOn = {}; const dCustom = {};
+    for (const dim of camp.demographics || []) {
+      dOn[dim.id] = true;
+      const std = DEMO_DIMS.find((x) => x.id === dim.id);
+      if (std?.custom) dCustom[dim.id] = (dim.options || []).join(", ");
+    }
+    setDemoOn(dOn); setDemoCustom(dCustom);
     setEditStatus(camp.status);
     const [{ data: gs }, { data: ls }, { data: lib }] = await Promise.all([
       sb().from("fs_groups").select("id, type, label, target_n").eq("campaign_id", id),
@@ -118,12 +129,25 @@ export default function Campaign() {
   async function saveSettings(e) {
     e.preventDefault();
     setBusy(true); setSaved(false);
+    // Rebuild demographics config from the checklist
+    const demoConf = [];
+    for (const d of DEMO_DIMS) {
+      if (!demoOn[d.id]) continue;
+      let options = d.options;
+      if (d.custom) {
+        options = String(demoCustom[d.id] || "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, 20);
+        if (d.id === "language" && options.length === 0) options = d.options;
+        if (options.length < 2) { setBusy(false); setErr(`"${d.label}": list at least 2 options (comma-separated).`); return; }
+      }
+      demoConf.push({ id: d.id, label: d.label, question: d.question, options });
+    }
     const upd = {
       name: editName.trim() || c.name,
       anonymity_threshold: Math.max(4, Number(editThreshold || 5)),
       thankyou_message: editThanks.trim() || null,
       closed_message: editClosedMsg.trim() || null,
       segments: segList.length ? segList.slice(0, 30) : null,
+      demographics: demoConf.length ? demoConf : null,
     };
     if (editCloses) upd.closes_at = new Date(editCloses + "T23:59:59").toISOString();
     const { error } = await sb().from("fs_campaigns").update(upd).eq("id", id);
@@ -523,6 +547,31 @@ export default function Campaign() {
                         onBlur={() => { const v = (segNew || "").trim(); if (v && !segList.includes(v)) setSegList((l) => [...l, v]); setSegNew(null); }} />
                     )}
                   </div>
+                </div>
+              </div>
+
+              <div style={{ marginTop: 16 }}>
+                <label className="f">Demographics recorded on the response form</label>
+                <p className="small muted" style={{ margin: "0 0 8px" }}>
+                  Always optional for respondents; every demographic cut is hidden below the
+                  anonymity threshold. Changes apply to responses submitted from now on.
+                </p>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "4px 16px" }}>
+                  {DEMO_DIMS.map((d) => (
+                    <div key={d.id}>
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "4px 0" }}>
+                        <input type="checkbox" checked={!!demoOn[d.id]}
+                          onChange={(e) => setDemoOn((s) => ({ ...s, [d.id]: e.target.checked }))} />
+                        <span className="small"><b>{d.label}</b></span>
+                      </label>
+                      {d.custom && demoOn[d.id] ? (
+                        <input type="text" value={demoCustom[d.id] || ""}
+                          onChange={(e) => setDemoCustom((s) => ({ ...s, [d.id]: e.target.value }))}
+                          placeholder={d.id === "language" ? "Empty = standard list" : (d.placeholder || "Comma-separated options")}
+                          style={{ margin: "2px 0 6px 24px", width: "calc(100% - 24px)", padding: "5px 10px", fontSize: 12.5 }} />
+                      ) : null}
+                    </div>
+                  ))}
                 </div>
               </div>
 
