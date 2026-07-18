@@ -21,6 +21,11 @@ export default function Account() {
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  // mfa
+  const [factors, setFactors] = useState(null);
+  const [enroll, setEnroll] = useState(null); // { factorId, qr, secret }
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaMsg, setMfaMsg] = useState("");
   // team
   const [members, setMembers] = useState(null);
   const [tErr, setTErr] = useState("");
@@ -57,8 +62,33 @@ export default function Account() {
         setOrg(mem.fs_orgs); setRole(mem.role);
         if (mem.role === "owner" || mem.role === "manager") loadTeam(mem.org_id);
       }
+      try { const { data: f } = await sb().auth.mfa.listFactors(); setFactors(f?.totp || []); } catch { setFactors([]); }
     })();
   }, [router, loadTeam]);
+
+  async function startEnroll() {
+    setMfaMsg("");
+    const { data, error } = await sb().auth.mfa.enroll({ factorType: "totp", friendlyName: "Authenticator app" });
+    if (error) { setMfaMsg(error.message); return; }
+    setEnroll({ factorId: data.id, qr: data.totp.qr_code, secret: data.totp.secret });
+  }
+  async function confirmEnroll() {
+    setMfaMsg("");
+    try {
+      const { data: ch, error: e1 } = await sb().auth.mfa.challenge({ factorId: enroll.factorId });
+      if (e1) throw e1;
+      const { error: e2 } = await sb().auth.mfa.verify({ factorId: enroll.factorId, challengeId: ch.id, code: mfaCode.trim() });
+      if (e2) throw e2;
+      setEnroll(null); setMfaCode(""); setMfaMsg("Two-factor authentication is on ✓ — you'll be asked for a code at every sign-in.");
+      const { data: f } = await sb().auth.mfa.listFactors(); setFactors(f?.totp || []);
+    } catch (ex) { setMfaMsg(ex.message || "Invalid code — try again."); }
+  }
+  async function removeFactor(id) {
+    setMfaMsg("");
+    const { error } = await sb().auth.mfa.unenroll({ factorId: id });
+    if (error) setMfaMsg(error.message);
+    const { data: f } = await sb().auth.mfa.listFactors(); setFactors(f?.totp || []);
+  }
 
   async function change(e) {
     e.preventDefault();
@@ -167,6 +197,39 @@ export default function Account() {
         </div>
       ) : null}
 
+      <div className="card" style={{ maxWidth: 560 }}>
+        <h2>Two-factor authentication</h2>
+        {(role === "owner" || role === "manager") && factors && !factors.some((f) => f.status === "verified") ? (
+          <div className="err">Your role can manage campaigns and respondent data — please enable two-factor authentication now.</div>
+        ) : null}
+        {mfaMsg ? <div className={mfaMsg.includes("✓") ? "ok" : "err"}>{mfaMsg}</div> : null}
+        {factors === null ? <p className="muted small">Loading…</p> : factors.some((f) => f.status === "verified") ? (
+          <>
+            <p className="small">✓ Enabled — a code from your authenticator app is required at sign-in.</p>
+            {factors.map((f) => (
+              <p key={f.id} className="small muted">{f.friendly_name || "Authenticator"} · added {new Date(f.created_at).toLocaleDateString()}{" "}
+                <button className="btn btn-ghost btn-sm" onClick={() => removeFactor(f.id)}>Remove</button></p>
+            ))}
+          </>
+        ) : enroll ? (
+          <>
+            <p className="small">Scan this QR code with Google Authenticator, Microsoft Authenticator or 1Password, then enter the 6-digit code:</p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={enroll.qr} alt="TOTP enrolment QR code" style={{ width: 180, height: 180, background: "#fff", padding: 8, borderRadius: 10 }} />
+            <p className="small muted">Can&apos;t scan? Manual key: <code style={{ fontSize: 12 }}>{enroll.secret}</code></p>
+            <div style={{ display: "flex", gap: 8, maxWidth: 340 }}>
+              <input type="text" inputMode="numeric" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} placeholder="123456" />
+              <button className="btn btn-primary btn-sm" onClick={confirmEnroll}>Activate</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="small muted">Protect your account with a 6-digit code from an authenticator app, required at every sign-in.</p>
+            <button className="btn btn-primary btn-sm" onClick={startEnroll}>Enable two-factor authentication</button>
+          </>
+        )}
+      </div>
+
       <div className="card" style={{ maxWidth: 480 }}>
         <h2>Change password</h2>
         <p className="muted small">Signed in as {user.email}. If you were given a temporary password, change it here now.</p>
@@ -182,7 +245,7 @@ export default function Account() {
           </div>
         </form>
       </div>
-      <p className="small muted">Multi-factor authentication is on the roadmap for the next phase.</p>
+      <p className="small muted">Questions about your data? See the <a href="/privacy" target="_blank">privacy notice</a>.</p>
     </Shell>
   );
 }
