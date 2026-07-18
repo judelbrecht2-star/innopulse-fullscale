@@ -94,14 +94,19 @@ const GLOSSARY = [
   ["Shared questions", "Questions served to both groups in a comparison; group-vs-group deltas use only these."],
   ["Finding classes", "Observed = directly visible in the data · Supported interpretation = several independent signals converge · Plausible hypothesis = credible, still requires validation."],
   ["Polarisation", "A wide spread (high standard deviation) on one question — the average conceals two different experiences of the organisation."],
-  ["ISO 56001:2024", "The international requirements standard for innovation management systems; findings and interventions are tagged to its clauses to indicate readiness areas."],
+  ["ISO 56001:2024", "The international requirements standard for innovation management systems. Clause tags in this document indicate INDICATIVE alignment based on stakeholder perceptions only — they do not establish conformity. Certification is performed only by independent certification bodies against verified evidence."],
+  ["Evidence levels (E1–E4)", "E1 Perceived: survey responses only — 'stakeholders perceive…'. E2 Corroborated: survey plus open-text or interview signals. E3 Implemented: documents and records verify the practice. E4 Effective: outcome evidence demonstrates results. This diagnostic reports at E1–E2."],
+  ["Diagnostic vs Verified Innovation Audit", "A Diagnostic is generated from survey (perception) evidence. A Verified Innovation Audit adds interviews, documents, operational records and auditor verification, allowing E3/E4 conclusions. This document is a Diagnostic."],
 ];
 
 const REFS = [
+  "Chiesa, V., Coughlan, P., & Voss, C. A. (1996). Development of a technical innovation audit. Journal of Product Innovation Management, 13(2), 105–136.",
   "Crossan, M. M., & Apaydin, M. (2010). A multi-dimensional framework of organizational innovation. Journal of Management Studies, 47(6), 1154–1191.",
   "Edmondson, A. C. (1999). Psychological safety and learning behavior in work teams. Administrative Science Quarterly, 44(2), 350–383.",
   "ISO (2019). ISO 56002:2019 Innovation management system — Guidance. ISO.",
+  "ISO (2019). ISO/TR 56004:2019 Innovation Management Assessment — Guidance. ISO.",
   "ISO (2024). ISO 56001:2024 Innovation management system — Requirements. ISO.",
+  "OECD/Eurostat (2018). Oslo Manual 2018: Guidelines for Collecting, Reporting and Using Data on Innovation (4th ed.). OECD Publishing.",
   "O'Connor, G. C., & Ayers, A. D. (2019). Building organizational capacity for continuous innovation. Research-Technology Management, 62(3), 19–29.",
   "Pisano, G. P. (2015). You need an innovation strategy. Harvard Business Review, 93(6), 44–54.",
   "Teece, D. J. (2018). Dynamic capabilities and (digital) platform lifecycles. Oxford University Press.",
@@ -128,11 +133,53 @@ export async function generateWordReport(rep, interps) {
   const b = [];
   // ---- cover ----
   b.push(new Paragraph({ spacing: { before: 2200, after: 60 }, children: [new TextRun({ text: "INNOPULSE FULL-SCALE", bold: true, color: CORAL, size: 24, characterSpacing: 40 })] }));
-  b.push(new Paragraph({ spacing: { after: 90 }, children: [new TextRun({ text: "Innovation Health Report", bold: true, color: INK, size: 56 })] }));
+  b.push(new Paragraph({ spacing: { after: 60 }, children: [new TextRun({ text: "Corporate Innovation Diagnostic", bold: true, color: INK, size: 56 })] }));
+  b.push(P("A multi-stakeholder assessment of perceived innovation capability, alignment and experience.", { s: 23, c: "44444a", after: 140, i: true }));
   b.push(P(`${s.org?.name || ""} — ${s.campaign?.name || ""}`, { s: 28, c: "44444a", after: 260 }));
   b.push(P(`Report version v${rep.version} · generated ${new Date(s.generated_at).toLocaleDateString()} · snapshot ${String(rep.checksum || "").slice(0, 12)}`, { c: GREY, s: 20 }));
   b.push(P(`Questionnaire ${rep.questionnaire_version ? "v" + rep.questionnaire_version : ""} · findings rulebook ${s.rulebook} · anonymity threshold ${s.campaign?.anonymity_threshold}`, { c: GREY, s: 20 }));
+  b.push(P("Assessment type: Diagnostic — survey (perception) evidence only. It reports how stakeholders experience the innovation system; it is not an audit and does not certify conformity with any standard. A Verified Innovation Audit — adding interviews, documents and operational records — is available as a follow-on engagement.", { c: GREY, s: 19 }));
   b.push(P("CONFIDENTIAL — prepared by The Growth System. Results are reported for stakeholder groups only; no individual is identifiable in this document.", { c: GREY, s: 19, i: true, after: 0 }));
+  b.push(new Paragraph({ children: [new PageBreak()] }));
+
+  // ---- decision brief (two pages for the board) ----
+  b.push(H("Decision brief"));
+  b.push(P("The condensed view for the board and executive committee: current condition, what matters most, and what requires a decision. Full evidence, methods and caveats follow in the body of the report.", { i: true, c: GREY, s: 19 }));
+  const dbTarget = groups.reduce((a, g) => a + (g.target_n || 0), 0);
+  const dbN = groups.reduce((a, g) => a + (g.n || 0), 0);
+  const coverage = dbTarget ? Math.round((dbN / dbTarget) * 100) : null;
+  const suppressedCount = groups.filter((g) => g.suppressed).length;
+  const confWord = (coverage != null && coverage < 50) || smalls.length ? "Low" : coverage != null && coverage < 80 ? "Moderate" : "Reasonable";
+  b.push(P("1 · Current condition", { b: true, after: 40 }));
+  b.push(P(overall
+    ? `Innovation Capability Index ${overall.score} — ${bandWord(overall.score)} band (value-building benchmark: 70).${s.trend && s.trend.overall?.d != null ? ` Movement since ${s.trend.priorName}: ${s.trend.overall.d > 0 ? "+" : ""}${s.trend.overall.d} points.` : ""}`
+    : "Overall index suppressed — responses have not yet passed the anonymity threshold."));
+  b.push(P("2 · Evidence confidence", { b: true, after: 40 }));
+  b.push(P(`${confWord}.${coverage != null ? ` Participation ${dbN} of ${dbTarget} targeted (${coverage}%).` : ` ${dbN} responses.`}${suppressedCount ? ` ${suppressedCount} group${suppressedCount === 1 ? "" : "s"} suppressed below the anonymity threshold.` : ""}${smalls.length ? ` Small samples: ${smalls.map((g) => `${nameOf(g.type)} n=${g.n}`).join(", ")} — treat every conclusion as directional until coverage improves.` : ""} All results are perception evidence (E1) unless stated otherwise.`));
+  if (overall) {
+    const ranked = pillars.map((p) => ({ p, v: overall.pillars[p.id] })).filter((x) => x.v != null).sort((a, b2) => b2.v - a.v);
+    if (ranked.length >= 2) {
+      b.push(P("3 · Strengths to protect", { b: true, after: 40 }));
+      b.push(P(ranked.slice(0, 3).map((x, i) => `${i + 1}. ${x.p.short} (${x.v})`).join("   ")));
+    }
+  }
+  if (findings.length) {
+    b.push(P("4 · Risks requiring attention", { b: true, after: 40 }));
+    findings.slice(0, 3).forEach((f, i) => b.push(P(`${i + 1}. ${f.title}`, { after: 30 })));
+  }
+  if (gapRows.length) {
+    b.push(P("5 · Largest stakeholder misalignment", { b: true, after: 40 }));
+    b.push(P(`${gapRows[0].d} points on ${gapRows[0].short}: ${gapRows[0].hiName} ${gapRows[0].hi} vs ${gapRows[0].loName} ${gapRows[0].lo} (on ${gapRows[0].items} shared questions). Validate before acting on any average.`));
+  }
+  b.push(P("6 · Next 90 days", { b: true, after: 40 }));
+  if (findings.length) {
+    findings.slice(0, 3).forEach((f, i) => b.push(P(`${i + 1}. ${f.validate}`, { after: 30 })));
+  } else {
+    b.push(P("Drive participation to a defensible coverage level, then re-run the findings engine."));
+  }
+  b.push(P("7 · Decisions required", { b: true, after: 40 }));
+  b.push(P(`${(coverage != null && coverage < 50) ? "Approve a sponsor-led participation push before acting on scores. " : ""}Commission validation of the top findings; name an owner and date for each intervention selected; approve the re-measurement window (recommended 6–12 months after interventions start).`, { after: 140 }));
+  b.push(P("Method note: anonymous multi-stakeholder survey; groups under the anonymity threshold are suppressed; cross-group comparisons use shared questions only. Full methodology and limitations appear later in this document.", { i: true, c: GREY, s: 18 }));
   b.push(new Paragraph({ children: [new PageBreak()] }));
 
   // ---- executive summary ----
@@ -162,7 +209,7 @@ export async function generateWordReport(rep, interps) {
 
   // ---- model ----
   b.push(H("The InnoPulse model"));
-  b.push(P("InnoPulse assesses organisational innovation capability across five interdependent pillars that form a value chain: Strategic Innovation Intent sets direction; Innovation Environment Management creates the conditions; Organisational Innovation Capability provides the skills and tools; Innovation Process Management carries ideas to implementation; and Return on Innovation measures and communicates the value created. Weakness in an upstream pillar typically caps the performance of everything downstream, which is why this report reads the five scores as one system rather than five numbers. The model aligns with the ISO 56000 series: ISO 56001:2024 clause references throughout indicate readiness areas, not certification."));
+  b.push(P("InnoPulse assesses organisational innovation capability across five interdependent pillars that form a value chain: Strategic Innovation Intent sets direction; Innovation Environment Management creates the conditions; Organisational Innovation Capability provides the skills and tools; Innovation Process Management carries ideas to implementation; and Return on Innovation measures and communicates the value created. Weakness in an upstream pillar typically caps the performance of everything downstream, which is why this report reads the five scores as one system rather than five numbers. The model aligns with the ISO 56000 series. Clause references throughout indicate INDICATIVE alignment with ISO 56001:2024 based on stakeholder perceptions; documentary and implementation evidence has not been verified, and nothing in this document constitutes or implies certification, which only an independent certification body can grant."));
 
   // ---- methodology ----
   b.push(H("Methodology and sample"));
@@ -174,6 +221,18 @@ export async function generateWordReport(rep, interps) {
   mrows.push(new TableRow({ children: [TC("Total", 2800, { b: true }), TC(totN, 1500, { b: true }), TC(totTarget || "—", 1500, { b: true }), TC(totTarget ? Math.round((totN / totTarget) * 100) + "% of target" : "", 3000)] }));
   b.push(new Table({ columnWidths: [2800, 1500, 1500, 3000], width: { size: 8800, type: WidthType.DXA }, rows: mrows }));
   b.push(CAP("Table 1: Participation by stakeholder group."));
+
+  // evidence-level model (E1–E4)
+  b.push(P("Evidence levels used in this document", { b: true, after: 40 }));
+  b.push(P("Conclusions are labelled by the strength of evidence behind them. A questionnaire produces perception evidence; stronger levels require the verification streams of a Verified Innovation Audit."));
+  const erows = [new TableRow({ children: [TC("Level", 1200, { b: true, fill: "F4F1EC" }), TC("Evidence available", 4200, { b: true, fill: "F4F1EC" }), TC("Permitted conclusion", 3400, { b: true, fill: "F4F1EC" })] })];
+  [["E1 · Perceived", "Survey responses only", "“Stakeholders perceive or report…”"],
+   ["E2 · Corroborated", "Survey plus open-text themes or interviews", "“Multiple stakeholder signals suggest…”"],
+   ["E3 · Implemented", "Documents and records verify the practice", "“The process is implemented…”"],
+   ["E4 · Effective", "Outcome evidence demonstrates results", "“The process is operating effectively…”"],
+  ].forEach(([l, ev, c2]) => erows.push(new TableRow({ children: [TC(l, 1200, { b: true }), TC(ev, 4200), TC(c2, 3400)] })));
+  b.push(new Table({ columnWidths: [1200, 4200, 3400], width: { size: 8800, type: WidthType.DXA }, rows: erows }));
+  b.push(CAP("Table 2: Evidence-level model. This diagnostic reports at E1, rising to E2 where independent open-text themes corroborate a quantitative pattern. E3 and E4 claims require a Verified Innovation Audit."));
 
   // ---- overall results ----
   b.push(new Paragraph({ children: [new PageBreak()] }));
@@ -323,9 +382,10 @@ export async function generateWordReport(rep, interps) {
   b.push(new Paragraph({ children: [new PageBreak()] }));
   b.push(H("Findings register (reviewed)"));
   if (!findings.length) b.push(P("No findings were approved for this report version."));
+  if (findings.length) b.push(P("All findings below are evidence level E1 (perceived) — they describe patterns in anonymous survey responses. ISO 56001 tags are indicative alignment based on stakeholder perceptions; documentary and implementation evidence has not been verified, and no conformity claim is made or implied.", { i: true, c: GREY, s: 19 }));
   findings.forEach((f, i) => {
     b.push(P(`${i + 1}. ${f.title}`, { b: true, s: 22 }));
-    b.push(P(`${f.klass} · confidence ${f.confidence}${f.iso ? ` · ISO 56001 ${f.iso}` : ""}`, { c: GREY, s: 19 }));
+    b.push(P(`${f.klass} · confidence ${f.confidence} · evidence level E1 (perceived)${f.iso ? ` · indicative ISO 56001 alignment: ${f.iso}` : ""}`, { c: GREY, s: 19 }));
     b.push(P(f.text));
     if (f.trigger) b.push(P(`Fired when: ${f.trigger}`, { c: GREY, s: 19 }));
     b.push(P(`Evidence: ${(f.evidence || []).join("  ")}`, { c: GREY, s: 18 }));
@@ -349,14 +409,14 @@ export async function generateWordReport(rep, interps) {
     styles: { default: { document: { run: { font: "Calibri", size: 21, color: INK } } } },
     sections: [{
       properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1100, bottom: 1100, left: 1250, right: 1250 } } },
-      footers: { default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: `${s.org?.name || ""} · Innovation Health Report v${rep.version} · CONFIDENTIAL · page `, size: 16, color: GREY }), new TextRun({ children: [PageNumber.CURRENT], size: 16, color: GREY })] })] }) },
+      footers: { default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: `${s.org?.name || ""} · Corporate Innovation Diagnostic v${rep.version} · CONFIDENTIAL · page `, size: 16, color: GREY }), new TextRun({ children: [PageNumber.CURRENT], size: 16, color: GREY })] })] }) },
       children: b,
     }],
   });
   const blob = await Packer.toBlob(doc);
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `${(s.campaign?.name || "campaign").replace(/[^\w]+/g, "-")}-Innovation-Health-Report-v${rep.version}.docx`;
+  a.download = `${(s.campaign?.name || "campaign").replace(/[^\w]+/g, "-")}-Corporate-Innovation-Diagnostic-v${rep.version}.docx`;
   a.click();
   URL.revokeObjectURL(a.href);
 }
