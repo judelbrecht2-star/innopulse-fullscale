@@ -284,14 +284,19 @@ export async function generateWordReport(rep, interps) {
   const cutTable = (title, rowsIn, notDeclared, caption) => {
     const sw = 2400, nw = 900, cw = Math.floor(4600 / pillars.length), ow = 900;
     const rows = [new TableRow({ children: [TC(title, sw, { b: true, fill: "F4F1EC" }), TC("n", nw, { b: true, fill: "F4F1EC" }), ...pillars.map((p) => TC(p.short.split(" ")[0], cw, { b: true, fill: "F4F1EC" })), TC("Index", ow, { b: true, fill: "F4F1EC" })] })];
-    rowsIn.forEach((sg) => rows.push(new TableRow({
-      children: sg.suppressed
-        ? [TC(sg.name, sw), TC(sg.n, nw), TC("Suppressed — below the anonymity threshold", cw * pillars.length + ow, { c: GREY, span: pillars.length + 1 })]
-        : [TC(sg.name, sw), TC(sg.n, nw), ...pillars.map((p) => TC(sg.pillars?.[p.id] ?? "—", cw)), TC(sg.score ?? "—", ow, { b: true })],
-    })));
+    let anyIndicative = false;
+    rowsIn.forEach((sg) => {
+      const ind = !sg.suppressed && sg.n < MIN_N;
+      if (ind) anyIndicative = true;
+      rows.push(new TableRow({
+        children: sg.suppressed
+          ? [TC(sg.name, sw), TC(sg.n, nw), TC("Suppressed — below the anonymity threshold", cw * pillars.length + ow, { c: GREY, span: pillars.length + 1 })]
+          : [TC(sg.name + (ind ? " *" : ""), sw), TC(sg.n, nw), ...pillars.map((p) => TC(sg.pillars?.[p.id] ?? "—", cw)), TC(sg.score ?? "—", ow, { b: true })],
+      }));
+    });
     if (notDeclared > 0) rows.push(new TableRow({ children: [TC("Prefer not to say", sw, { c: GREY }), TC(notDeclared, nw, { c: GREY }), TC("—", cw * pillars.length + ow, { c: GREY, span: pillars.length + 1 })] }));
     b.push(new Table({ columnWidths: [sw, nw, ...pillars.map(() => cw), ow], width: { size: sw + nw + cw * pillars.length + ow, type: WidthType.DXA }, rows }));
-    b.push(CAP(caption));
+    b.push(CAP(caption + (anyIndicative ? ` * Fewer than ${MIN_N} respondents — displayed because it clears the privacy threshold, but statistically indicative only.` : "")));
   };
   const demoDims = (s.demographics || []).filter((d) => (d.options || []).length);
   if (demoDims.length) {
@@ -350,10 +355,26 @@ export async function generateWordReport(rep, interps) {
     const pth = (s.comment_themes || []).filter((t) => t.pillar === p.id);
     if (pth.length) {
       b.push(P("Written-response themes", { b: true, after: 40 }));
-      const rows = [new TableRow({ children: [TC("Theme", 4200, { b: true, fill: "F4F1EC" }), TC("Mentions", 1400, { b: true, fill: "F4F1EC" }), TC("Raised by", 3200, { b: true, fill: "F4F1EC" })] })];
-      pth.forEach((t) => rows.push(new TableRow({ children: [TC(t.theme, 4200), TC(t.count, 1400), TC((t.groups || []).join(", "), 3200, { s: 17 })] })));
-      b.push(new Table({ columnWidths: [4200, 1400, 3200], width: { size: 8800, type: WidthType.DXA }, rows }));
-      b.push(CAP("Themes coded by the assessment team on written responses from groups above the anonymity threshold."));
+      const cm = s.comment_meta || {};
+      const hasShare = cm.commenters != null && pth.some((t) => t.people != null);
+      const share = (t) => {
+        const ppl = t.people ?? t.count;
+        const ofC = cm.commenters ? Math.round((ppl / cm.commenters) * 100) : null;
+        const ofA = cm.respondents ? Math.round((ppl / cm.respondents) * 100) : null;
+        return `${ppl} ${ppl === 1 ? "person" : "people"}${ofC != null ? ` · ${ofC}% of commenters` : ""}${ofA != null ? ` · ${ofA}% of all respondents` : ""}`;
+      };
+      const rows = hasShare
+        ? [new TableRow({ children: [TC("Theme", 3300, { b: true, fill: "F4F1EC" }), TC("Mentions", 1100, { b: true, fill: "F4F1EC" }), TC("Share", 2600, { b: true, fill: "F4F1EC" }), TC("Raised by", 1800, { b: true, fill: "F4F1EC" })] })]
+        : [new TableRow({ children: [TC("Theme", 4200, { b: true, fill: "F4F1EC" }), TC("Mentions", 1400, { b: true, fill: "F4F1EC" }), TC("Raised by", 3200, { b: true, fill: "F4F1EC" })] })];
+      pth.forEach((t) => rows.push(new TableRow({
+        children: hasShare
+          ? [TC(t.theme, 3300), TC(t.count, 1100), TC(share(t), 2600, { s: 17 }), TC((t.groups || []).join(", "), 1800, { s: 17 })]
+          : [TC(t.theme, 4200), TC(t.count, 1400), TC((t.groups || []).join(", "), 3200, { s: 17 })],
+      })));
+      b.push(new Table({ columnWidths: hasShare ? [3300, 1100, 2600, 1800] : [4200, 1400, 3200], width: { size: 8800, type: WidthType.DXA }, rows }));
+      b.push(CAP(hasShare
+        ? `Themes coded by the assessment team on written responses from groups above the anonymity threshold. Both denominators shown deliberately: ${cm.commenters} of ${cm.respondents} respondents wrote comments, so a widely-shared theme among commenters may still represent a minority of all respondents.`
+        : "Themes coded by the assessment team on written responses from groups above the anonymity threshold."));
     }
     // analyst summary of written responses (authored, Step 3)
     if (s.pillar_notes?.[p.id]) {
@@ -390,6 +411,8 @@ export async function generateWordReport(rep, interps) {
     if (f.trigger) b.push(P(`Fired when: ${f.trigger}`, { c: GREY, s: 19 }));
     b.push(P(`Evidence: ${(f.evidence || []).join("  ")}`, { c: GREY, s: 18 }));
     b.push(P(`Also consider: ${f.alternatives}`, { s: 19 }));
+    if (f.analyst?.contradictory) b.push(P(`Analyst — contradictory evidence: ${f.analyst.contradictory}`, { s: 19, i: true }));
+    if (f.analyst?.alternative) b.push(P(`Analyst — alternative explanation: ${f.analyst.alternative}`, { s: 19, i: true }));
     b.push(P(`Validate next: ${f.validate}`, { s: 19, after: 160 }));
   });
 
