@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { sb } from "../../../lib/supabase";
 import { Shell } from "../../ui";
+import { DEMO_DIMS } from "../../lib/demographics";
 
 const GROUP_DEFS = [
   { type: "executive", label: "Executives & leadership", hint: "Board, exco, senior leaders", def: 5 },
@@ -33,6 +34,9 @@ export default function NewCampaign() {
   const [verId, setVerId] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  // Demographics: tick which details to record; custom dims take a comma-separated list
+  const [demoOn, setDemoOn] = useState({});
+  const [demoCustom, setDemoCustom] = useState({});
 
   useEffect(() => {
     (async () => {
@@ -59,6 +63,18 @@ export default function NewCampaign() {
     if (!name.trim()) { setErr("Give the campaign a name."); return; }
     if (chosen.length === 0) { setErr("Choose at least one stakeholder group."); return; }
     if (!verId) { setErr("Choose a questionnaire version."); return; }
+    // Build demographics config from ticked dimensions
+    const demoConf = [];
+    for (const d of DEMO_DIMS) {
+      if (!demoOn[d.id]) continue;
+      let options = d.options;
+      if (d.custom) {
+        options = String(demoCustom[d.id] || "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, 20);
+        if (d.id === "language" && options.length === 0) options = d.options; // sensible default list
+        if (options.length < 2) { setErr(`"${d.label}": list at least 2 options (comma-separated).`); return; }
+      }
+      demoConf.push({ id: d.id, label: d.label, question: d.question, options });
+    }
     setBusy(true);
     try {
       // Gate 1: one server-side transaction (fs_create_campaign) validates and
@@ -74,6 +90,7 @@ export default function NewCampaign() {
           label: (groups[g.type].label || g.label).trim() || g.label,
           target: Math.max(0, Number(groups[g.type].target || 0)),
         })),
+        p_demographics: demoConf.length ? demoConf : null,
       });
       if (error || !campId) throw new Error(error?.message || "Could not create campaign.");
       router.push(`/campaigns/${campId}`);
@@ -158,6 +175,34 @@ export default function NewCampaign() {
             <p className="small muted" style={{ marginTop: 10 }}>
               Each selected group gets its own signed link the moment the campaign is created.
             </p>
+          </div>
+
+          <div className="card" style={{ maxWidth: 640 }}>
+            <h2>Demographics <span className="small muted" style={{ fontWeight: 400 }}>— tick the details you want to record</span></h2>
+            <p className="small muted" style={{ marginTop: 2 }}>
+              Respondents always see these as <b>optional</b> (&quot;Prefer not to say&quot; is the default),
+              and every demographic cut is hidden below the anonymity threshold — exactly like
+              stakeholder groups. Use them to compare departments, tenure bands, work
+              arrangements and more.
+            </p>
+            {DEMO_DIMS.map((d) => (
+              <div key={d.id} style={{ padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+                  <input type="checkbox" checked={!!demoOn[d.id]}
+                    onChange={(e) => setDemoOn((s) => ({ ...s, [d.id]: e.target.checked }))} />
+                  <span style={{ flex: 1 }}>
+                    <b>{d.label}</b>
+                    <span className="small muted"> — {d.custom ? "you define the options" : d.options.join(" · ")}</span>
+                  </span>
+                </label>
+                {d.custom && demoOn[d.id] ? (
+                  <input type="text" value={demoCustom[d.id] || ""}
+                    onChange={(e) => setDemoCustom((s) => ({ ...s, [d.id]: e.target.value }))}
+                    placeholder={d.id === "language" ? "Leave empty for the standard list, or type your own, comma-separated" : (d.placeholder || "Comma-separated options")}
+                    style={{ marginTop: 8, marginLeft: 28, width: "calc(100% - 28px)" }} />
+                ) : null}
+              </div>
+            ))}
           </div>
 
           {err ? <div className="err">{err}</div> : null}
