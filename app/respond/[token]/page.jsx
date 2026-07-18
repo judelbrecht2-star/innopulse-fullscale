@@ -12,6 +12,7 @@ export default function Respond() {
   const [answers, setAnswers] = useState({});
   const [comments, setComments] = useState({});
   const [restored, setRestored] = useState(false);
+  const [segment, setSegment] = useState("");
   const [thanks, setThanks] = useState(null);
   const draftKey = "fs_draft_" + token;
   const doneKey = "fs_done_" + token;
@@ -112,7 +113,7 @@ export default function Respond() {
     try {
       const r = await fetch(`${FN_BASE}/fs-respond`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, answers, comments, consent: true, ref: clientRef() }),
+        body: JSON.stringify({ token, answers, comments, consent: true, ref: clientRef(), segment: segment || null }),
       });
       const j = await r.json();
       if (r.status === 409) {
@@ -210,6 +211,16 @@ export default function Respond() {
         <div className="ok">
           Welcome back — we restored the {answered} answer{answered === 1 ? "" : "s"} you&apos;d
           already given on this device.
+        </div>
+      ) : null}
+
+      {data.campaign?.segments?.length ? (
+        <div className="qblock">
+          <div className="qtext">Which area do you work in / deal with? <span className="muted">(optional — used only for group-level analysis, hidden below the anonymity threshold)</span></div>
+          <select value={segment} onChange={(e) => setSegment(e.target.value)} style={{ maxWidth: 340 }}>
+            <option value="">Prefer not to say</option>
+            {data.campaign.segments.map((sg) => <option key={sg} value={sg}>{sg}</option>)}
+          </select>
         </div>
       ) : null}
 
