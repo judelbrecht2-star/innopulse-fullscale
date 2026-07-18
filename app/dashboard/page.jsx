@@ -136,6 +136,11 @@ function ExecOverview({ data }) {
         <h2 style={{ margin: 0 }}>Executive overview</h2>
         <span className="small muted">{campaign.name} · <Link href={`/campaigns/${campaign.id}`}>full detail →</Link></span>
       </div>
+      <p className="small muted" style={{ margin: "4px 0 0" }}>
+        Data source: <b>{campaign.name}</b> only — the {campaign.status === "open" ? "currently open" : "most recent"} campaign,
+        never an average across campaigns. Earlier cycles appear as the trend comparison on{" "}
+        <Link href="/insights" style={{ color: "inherit", fontWeight: 600 }}>Insights</Link>, not in these numbers.
+      </p>
 
       {!overall ? (
         <p className="muted" style={{ marginTop: 10 }}>
