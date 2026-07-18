@@ -120,6 +120,7 @@ export default function Reports() {
         campaign: d.campaign, org: d.org, pillars: d.pillars, groups: d.groups,
         overall: d.overall, questions: d.questions || null,
         findings, rulebook: "v1.1", engine: "shared-gaps-v1",
+        segments: d.segments || null,
         client_context: content.client_context || cRow?.client_context || null,
         engagement_objective: content.engagement_objective || cRow?.engagement_objective || null,
         pillar_notes: Object.fromEntries((pn || []).filter((x) => x.body?.trim()).map((x) => [x.pillar, x.body])),
