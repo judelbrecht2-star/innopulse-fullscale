@@ -148,6 +148,16 @@ export async function generateWordReport(rep, interps) {
   }
   if (smalls.length) b.push(P(`Interpretation caveat: ${smalls.map((g) => `${nameOf(g.type)} n=${g.n}`).join(", ")} — group comparisons below ${MIN_N} respondents are indicative rather than conclusive.`, { i: true, c: AMBER }));
 
+  // ---- introduction (authored) ----
+  if (s.client_context || s.engagement_objective) {
+    b.push(H("Introduction"));
+    if (s.client_context) b.push(P(s.client_context));
+    if (s.engagement_objective) {
+      b.push(P("Objective of this assessment", { b: true, after: 40 }));
+      b.push(P(s.engagement_objective));
+    }
+  }
+
   // ---- model ----
   b.push(H("The InnoPulse model"));
   b.push(P("InnoPulse assesses organisational innovation capability across five interdependent pillars that form a value chain: Strategic Innovation Intent sets direction; Innovation Environment Management creates the conditions; Organisational Innovation Capability provides the skills and tools; Innovation Process Management carries ideas to implementation; and Return on Innovation measures and communicates the value created. Weakness in an upstream pillar typically caps the performance of everything downstream, which is why this report reads the five scores as one system rather than five numbers. The model aligns with the ISO 56000 series: ISO 56001:2024 clause references throughout indicate readiness areas, not certification."));
@@ -201,12 +211,32 @@ export async function generateWordReport(rep, interps) {
       b.push(new Table({ columnWidths: [qw, ...types.map(() => cw)], width: { size: qw + cw * types.length, type: WidthType.DXA }, rows }));
       b.push(CAP(`Table: ${p.short} question-level means per stakeholder group (n/s = not served to that group).`));
     }
-    const pf = findings.filter((f) => (f.evidence || []).some((e) => e.includes(`| ${p.id}`) || e.startsWith(`[${p.short}`)) || (f.iso || "").length === 0 && false);
-    const pfShow = pf.length ? pf : findings.filter((f) => f.evidence?.some((e) => e.toLowerCase().includes(p.id + "_")));
+    const pfShow = findings.filter((f) => f.evidence?.some((e) => e.toLowerCase().includes(p.id + "_")));
     pfShow.forEach((f) => {
       b.push(P(`Reviewed finding — ${f.title} (${f.klass}, confidence ${f.confidence})`, { b: true }));
       b.push(P(f.text));
     });
+    // analyst summary of written responses (authored, Step 3)
+    if (s.pillar_notes?.[p.id]) {
+      b.push(P("Summary of written responses", { b: true, after: 40 }));
+      b.push(P(s.pillar_notes[p.id]));
+    }
+    // curated verbatims (selected via "Add to report"; group-attributed only)
+    const vbs = (s.verbatims || []).filter((v2) => v2.pillar === p.id);
+    if (vbs.length) {
+      b.push(P("Stakeholder voice — selected verbatim comments", { b: true, after: 40 }));
+      vbs.forEach((v2) => {
+        b.push(new Paragraph({
+          spacing: { after: 70, line: 270 }, indent: { left: 340 },
+          border: { left: { style: BorderStyle.SINGLE, size: 14, color: CORAL, space: 8 } },
+          children: [
+            new TextRun({ text: `“${v2.body}”`, italics: true, size: 20, color: "3a3a40" }),
+            new TextRun({ text: `  — ${v2.group_label || GROUP_LBL[v2.group_type] || "Stakeholder"}, anonymous`, size: 18, color: GREY }),
+          ],
+        }));
+      });
+      b.push(P("Verbatims are reproduced as written and attributed to stakeholder group only; they are included by analyst selection from groups above the anonymity threshold.", { i: true, c: GREY, s: 18 }));
+    }
   }
 
   // ---- findings register ----
