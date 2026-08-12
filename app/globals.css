@@ -237,10 +237,13 @@ h2{font-size:17px;margin:0 0 10px;font-weight:700}
 .iconbtn:hover{border-color:#d5d5da}
 
 /* ---------- Forms ---------- */
-input[type=email],input[type=password],input[type=text],textarea,select{
+input[type=email]:not([data-slot]),input[type=password]:not([data-slot]),
+input[type=text]:not([data-slot]),input[type=tel]:not([data-slot]),
+input[type=number]:not([data-slot]),input[type=date]:not([data-slot]),
+textarea:not([data-slot]),select:not([data-slot]){
   width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;
   font-size:14.5px;font-family:inherit;background:#fff;color:var(--ink)}
-textarea{min-height:84px;resize:vertical}
+textarea:not([data-slot]){min-height:84px;resize:vertical}
 label.f{display:block;font-size:12.5px;font-weight:700;margin:14px 0 6px;color:#3f3f46}
 .err{background:var(--primary-soft);color:var(--primary-dark);border-radius:10px;padding:10px 14px;font-size:13.5px;margin:12px 0}
 .ok{background:var(--green-soft);color:var(--green);border-radius:10px;padding:10px 14px;font-size:13.5px;margin:12px 0}
@@ -443,12 +446,15 @@ table.t tr:last-child td{border-bottom:none}
 /* Native select: leave room for the chevron shadcn draws in the wrapper.
    The legacy `select { padding: … }` rule was squashing it onto the text. */
 [data-slot="native-select"] {
-  padding-right: 2rem;
-  padding-left: 0.75rem;
-  appearance: none;
-  background-image: none;
+  padding-right: 2rem;          /* gutter for the chevron shadcn draws */
+  background-image: none;       /* no doubled-up native arrow */
   text-overflow: ellipsis;
 }
+/* shadcn fields size themselves; make sure nothing forces them full-width in
+   toolbars where they should hug their content. */
+[data-slot="native-select"],
+[data-slot="input"],
+[data-slot="textarea"] { font-family: inherit; }
 
 /* Badge tones: keep the stakeholder / status colour semantics on shadcn Badge */
 [data-slot="badge"][data-tone="open"]   { background: var(--tgs-green-soft); color: var(--tgs-green); border-color: transparent; }
