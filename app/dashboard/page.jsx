@@ -62,7 +62,12 @@ export default function Dashboard() {
           <div className="pagehead">
             <div>
               <h1>{org ? org.name : "Overview"}</h1>
-              <p className="lead">Your role: <b>{role || "—"}</b> · {campaigns.length} campaign{campaigns.length === 1 ? "" : "s"} · <Link href="/campaigns">manage campaigns <ArrowRight className="inline size-4 -mt-0.5" /></Link></p>
+              <p className="lead ovw-lead">
+                Your role: <b>{role || "—"}</b> · {campaigns.length} campaign{campaigns.length === 1 ? "" : "s"}
+                <Button asChild variant="outline" size="sm" className="ovw-btn ovw-lead-btn">
+                  <Link href="/campaigns"><Group width={16} height={16} /> Manage campaigns <ArrowRight width={16} height={16} /></Link>
+                </Button>
+              </p>
             </div>
           </div>
           {err ? <div className="err">{err}</div> : null}
@@ -134,16 +139,6 @@ function ExecOverview({ data }) {
     }
   }
 
-  const ROW_ICON = {
-    strong: { Icon: GraphUp, tone: "green" },
-    weak:   { Icon: WarningTriangle, tone: "red" },
-    resp:   { Icon: Group, tone: "blue" },
-    conf:   { Icon: ShieldCheck, tone: "blue" },
-  };
-  const Tile = ({ k }) => {
-    const { Icon, tone } = ROW_ICON[k];
-    return <span className={"ovw-tile ovw-" + tone}><Icon width={18} height={18} /></span>;
-  };
 
   return (
     <Card className="ovw-card">
@@ -175,12 +170,10 @@ function ExecOverview({ data }) {
             <Donut value={overall.score} />
             <dl className="ovw-rows">
               <div className="ovw-row">
-                <Tile k="strong" />
                 <dt>Strongest capability</dt>
                 <dd><b>{strongest ? strongest.p.name : "—"}</b>{strongest ? <span className="ovw-score">{strongest.v}</span> : null}</dd>
               </div>
               <div className="ovw-row">
-                <Tile k="weak" />
                 <dt>Biggest constraint</dt>
                 <dd>
                   <b>{weakest ? weakest.p.name : "—"}</b>{weakest ? <span className="ovw-score">{weakest.v}</span> : null}
@@ -188,12 +181,10 @@ function ExecOverview({ data }) {
                 </dd>
               </div>
               <div className="ovw-row">
-                <Tile k="resp" />
                 <dt>Responses</dt>
                 <dd><b>{totalN}</b>{totalTarget ? <span className="ovw-meta"> of {totalTarget} targeted ({coverage}%)</span> : null}</dd>
               </div>
               <div className="ovw-row">
-                <Tile k="conf" />
                 <dt>Confidence</dt>
                 <dd>
                   {confidence ? <Badge variant="secondary" data-tone={confidence === "High" ? "open" : confidence === "Medium" ? "draft" : "closed"}>{confidence}</Badge> : "—"}
