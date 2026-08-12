@@ -7,6 +7,7 @@ import { DEMO_DIMS } from "../../lib/demographics";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { activeMembership } from "../../lib/org";
 
 const GROUP_DEFS = [
   { type: "executive", label: "Executives & leadership", hint: "Board, exco, senior leaders", def: 5 },
@@ -46,8 +47,7 @@ export default function NewCampaign() {
       const { data: u } = await sb().auth.getUser();
       if (!u.user) { router.replace("/login"); return; }
       setUser(u.user);
-      const { data: mem } = await sb().from("fs_memberships")
-        .select("role, org_id, fs_orgs(id, name)").limit(1).maybeSingle();
+      const mem = await activeMembership(u.user.id); // P0-3
       if (mem) { setOrg(mem.fs_orgs); setRole(mem.role); }
       // F3: campaigns choose their questionnaire version — no more hardcoded v1.0
       const { data: vs } = await sb().from("fs_questionnaire_versions")

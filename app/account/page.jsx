@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Check } from "iconoir-react";
+import { activeMembership } from "../lib/org";
 
 const ROLE_HELP = {
   owner: "Full control — campaigns, settings, team, and below-threshold detail",
@@ -62,8 +63,7 @@ export default function Account() {
       const { data } = await sb().auth.getUser();
       if (!data.user) { router.replace("/login"); return; }
       setUser(data.user);
-      const { data: mem } = await sb().from("fs_memberships")
-        .select("role, org_id, fs_orgs(id, name)").limit(1).maybeSingle();
+      const mem = await activeMembership(u.user.id); // P0-3
       if (mem) {
         setOrg(mem.fs_orgs); setRole(mem.role);
         if (mem.role === "owner" || mem.role === "manager") loadTeam(mem.org_id);

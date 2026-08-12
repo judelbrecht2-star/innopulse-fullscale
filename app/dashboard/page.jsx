@@ -8,6 +8,7 @@ import { bestGaps } from "../lib/gaps";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { ArrowRight } from "iconoir-react";
+import { activeMembership } from "../lib/org";
 
 const BARRIER = { sii: "Confusion", iem: "Resistance", oic: "Anxiety", ipm: "Frustration", roi: "False Starts" };
 
@@ -26,9 +27,7 @@ export default function Dashboard() {
       const { data: u } = await sb().auth.getUser();
       if (!u.user) { router.replace("/login"); return; }
       setUser(u.user);
-      const { data: mem, error: e1 } = await sb()
-        .from("fs_memberships").select("role, org_id, fs_orgs(id, name)").limit(1).maybeSingle();
-      if (e1) { setErr(e1.message); setLoading(false); return; }
+      const mem = await activeMembership(u.user.id); // P0-3: explicit active org
       if (!mem) { setErr("Your user isn't linked to an organisation yet."); setLoading(false); return; }
       setOrg(mem.fs_orgs); setRole(mem.role);
       const { data: cs } = await sb().from("fs_campaigns")

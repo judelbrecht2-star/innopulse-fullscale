@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { ArrowRight, WarningTriangle } from "iconoir-react";
+import { activeMembership } from "../lib/org";
 
 function randToken() {
   const b = new Uint8Array(8); crypto.getRandomValues(b);
@@ -40,7 +41,7 @@ export default function Campaigns() {
     const { data: u } = await sb().auth.getUser();
     if (!u.user) { router.replace("/login"); return; }
     setUser(u.user);
-    const { data: mem } = await sb().from("fs_memberships").select("role").eq("user_id", u.user.id).limit(1).maybeSingle();
+    const mem = await activeMembership(u.user.id); // P0-3
     setRole(mem?.role || "");
     const [{ data: cs }, { data: gs }, { data: ls }, { data: rs }, { data: vs }] = await Promise.all([
       sb().from("fs_campaigns").select("id, org_id, name, status, opens_at, closes_at, anonymity_threshold, questionnaire_version_id, created_by, created_at").order("created_at", { ascending: false }),

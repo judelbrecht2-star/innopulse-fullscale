@@ -176,8 +176,12 @@ export default function Campaign() {
     if (error) setErr(error.message); else load();
   }
   async function regenerateLink(groupId) {
+    // P0-4: rotation is a single audited backend transaction — the previous
+    // token is revoked and the replacement issued atomically. Never insert a
+    // second link client-side: that left two tokens live simultaneously.
+    if (!window.confirm("Rotate this link?\n\nThe current link stops working immediately for anyone who still has it.")) return;
     setBusy(true);
-    const { error } = await sb().from("fs_links").insert({ campaign_id: id, group_id: groupId, token: randToken(), mode: "group" });
+    const { error } = await sb().rpc("fs_rotate_link", { p_campaign: id, p_group: groupId, p_mode: "group" });
     setBusy(false);
     if (error) setErr(error.message); else load();
   }
