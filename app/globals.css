@@ -431,3 +431,10 @@ table.t tr:last-child td{border-bottom:none}
   [data-slot="badge"][data-tone="teal"]   { background: var(--tgs-teal-soft); color: var(--band-med); border-color: transparent; }
   [data-slot="badge"][data-tone="violet"] { background: var(--tgs-violet-soft); color: var(--tgs-violet); border-color: transparent; }
 }
+
+/* Sidebar links must not inherit the global coral link colour */
+@layer components {
+  [data-slot="sidebar"] a,
+  [data-slot="sidebar-menu-button"] { color: inherit; }
+  [data-slot="sidebar"] a:hover { color: inherit; }
+}
