@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation";
 import { sb, FN_BASE } from "../../../lib/supabase";
 import { Shell, I, bandWord, bandOf, groupName } from "../../ui";
 import { bestGaps, MIN_N } from "../../lib/gaps";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Download } from "iconoir-react";
+import { Check, Plus, WarningTriangle } from "iconoir-react";
 
 const PILLAR_ICON = { sii: "chart", iem: "people", oic: "person", ipm: "gear", roi: "pie" };
 function csvEsc(v) { const s = String(v ?? ""); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
@@ -179,10 +184,10 @@ export default function Interventions() {
           <p className="lead">Drawn from the approved InnoPulse intervention library — triggered by this campaign&apos;s scores and stakeholder gaps (compared on shared questions only), not generated ad hoc.</p>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button className="btn btn-ghost" onClick={exportRoadmap}>⭱ Export roadmap</button>
-          <button className="btn btn-primary" disabled={busy || planned} onClick={addAllToPlan}>
-            {planned ? "In action plan ✓" : "+ Add to action plan"}
-          </button>
+          <Button variant="ghost" onClick={exportRoadmap}><Download className="inline size-4 -mt-0.5" /> Export roadmap</Button>
+          <Button disabled={busy || planned} onClick={addAllToPlan}>
+            {planned ? <>In action plan <Check className="inline size-4 -mt-0.5" /></> : <><Plus className="inline size-4 -mt-0.5" /> Add to action plan</>}
+          </Button>
         </div>
       </div>
 
@@ -207,7 +212,7 @@ export default function Interventions() {
 
       {smallGroups.length ? (
         <p className="small" style={{ margin: "0 0 14px", color: "var(--amber, #b7791f)" }}>
-          ⚠ Small samples ({smallGroups.map((g) => `${groupName(g)} n=${g.n}`).join(", ")}) — treat gap-driven
+          <WarningTriangle className="inline size-4 -mt-0.5" /> Small samples ({smallGroups.map((g) => `${groupName(g)} n=${g.n}`).join(", ")}) — treat gap-driven
           priorities as indicative until groups reach {MIN_N}+ responses.
         </p>
       ) : null}
@@ -283,7 +288,7 @@ export default function Interventions() {
                     </div>
                     <span className="small muted">{g.hiName}</span><span className="v">{g.hi}</span>
                     <span className="pts">{g.d} pts</span>
-                    <span className="pill draft">{g.entry.impact || "High"} impact</span>
+                    <Badge variant="outline" data-tone="draft">{g.entry.impact || "High"} impact</Badge>
                     <span className="muted">›</span>
                   </div>
                 ))}
@@ -299,27 +304,27 @@ export default function Interventions() {
                   <span>{savedOwner || curEntry.owner_suggestion}</span>
                 ) : (
                   <span style={{ display: "flex", gap: 6, flex: 1 }}>
-                    <input type="text" value={ownerEdit} onChange={(e) => setOwnerEdit(e.target.value)} placeholder={curEntry.owner_suggestion} />
-                    <button className="btn btn-primary btn-sm" disabled={busy} onClick={saveOwner}>Save</button>
+                    <Input type="text" value={ownerEdit} onChange={(e) => setOwnerEdit(e.target.value)} placeholder={curEntry.owner_suggestion} />
+                    <Button size="sm" disabled={busy} onClick={saveOwner}>Save</Button>
                   </span>
                 )}
               </div>
               <div className="kv"><span className="k"><I.doc />Horizon</span><span>{curEntry.horizon}</span></div>
-              <div className="kv"><span className="k"><I.chart />Effort</span><span className="pill draft">{curEntry.effort}</span></div>
-              <div className="kv"><span className="k"><I.chart />Impact</span><span className="pill open">{curEntry.impact}</span></div>
+              <div className="kv"><span className="k"><I.chart />Effort</span><Badge variant="outline" data-tone="draft">{curEntry.effort}</Badge></div>
+              <div className="kv"><span className="k"><I.chart />Impact</span><Badge variant="secondary" data-tone="open">{curEntry.impact}</Badge></div>
               <div className="kv"><span className="k"><I.pie />Measure</span><span className="small">{curEntry.kpi}</span></div>
               <div className="kv" style={{ borderBottom: "none" }}><span className="k"><I.shield />ISO readiness</span><span className="small">{curEntry.iso_map}</span></div>
               <div style={{ margin: "8px 0 14px" }}>
                 {(curEntry.services || []).map((s, i) => <span className="tagchip" key={i}>{s}</span>)}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button className="btn btn-primary btn-sm" onClick={() => setOwnerEdit(savedOwner || "")}>Assign owner</button>
+                <Button size="sm" onClick={() => setOwnerEdit(savedOwner || "")}>Assign owner</Button>
                 {msEdit === null ? (
-                  <button className="btn btn-ghost btn-sm" onClick={() => setMsEdit("")}>⚑ Add milestone</button>
+                  <Button variant="ghost" size="sm" onClick={() => setMsEdit("")}>⚑ Add milestone</Button>
                 ) : (
                   <span style={{ display: "flex", gap: 6, width: "100%", marginTop: 8 }}>
-                    <input type="text" value={msEdit} onChange={(e) => setMsEdit(e.target.value)} placeholder="e.g. Listening sessions completed by 15 Aug" />
-                    <button className="btn btn-primary btn-sm" disabled={busy} onClick={saveMilestone}>Add</button>
+                    <Input type="text" value={msEdit} onChange={(e) => setMsEdit(e.target.value)} placeholder="e.g. Listening sessions completed by 15 Aug" />
+                    <Button size="sm" disabled={busy} onClick={saveMilestone}>Add</Button>
                   </span>
                 )}
               </div>

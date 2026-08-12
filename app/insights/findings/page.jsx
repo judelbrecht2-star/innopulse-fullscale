@@ -6,6 +6,12 @@ import { sb, FN_BASE } from "../../../lib/supabase";
 import { Shell, I } from "../../ui";
 import { evaluateFindings, CLASS } from "../../lib/findings";
 import TagGlossary from "../../lib/TagGlossary";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { ArrowRight, Check, Download } from "iconoir-react";
 
 function csvEsc(v) { const s = String(v ?? ""); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
 const PRI = { 3: "P3 · Urgent", 2: "P2 · Material", 1: "P1 · Monitor" };
@@ -100,7 +106,7 @@ export default function FindingsWorkbench() {
     : sortBy === "rev"
       ? [
         { key: "todo", label: "Awaiting review", color: "var(--primary)", items: filtered.filter((f) => !reviews[f.id]).sort(bySev) },
-        { key: "done", label: "Reviewed ✓", color: "var(--muted)", items: filtered.filter((f) => !!reviews[f.id]).sort(bySev) },
+        { key: "done", label: "Reviewed", color: "var(--muted)", items: filtered.filter((f) => !!reviews[f.id]).sort(bySev) },
       ]
       : [3, 2, 1].map((s) => ({ key: s, label: PRI[s], color: PRIC[s], items: filtered.filter((f) => f.severity === s) }));
 
@@ -147,10 +153,10 @@ export default function FindingsWorkbench() {
           <p className="lead">Deterministic patterns triggered by converging evidence — every finding cites its questions and includes a validation step.</p>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button className="btn btn-ghost" onClick={exportEvidence} disabled={!findings.length}>⭱ Export evidence</button>
-          <select value={sel} onChange={(e) => setSel(e.target.value)} style={{ width: "auto", fontWeight: 600 }}>
-            {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          <Button variant="ghost" onClick={exportEvidence} disabled={!findings.length}><Download className="inline size-4 -mt-0.5" /> Export evidence</Button>
+          <NativeSelect value={sel} onChange={(e) => setSel(e.target.value)} style={{ width: "auto", fontWeight: 600 }}>
+            {campaigns.map((c) => <NativeSelectOption key={c.id} value={c.id}>{c.name}</NativeSelectOption>)}
+          </NativeSelect>
         </div>
       </div>
       {err ? <div className="err">{err}</div> : null}
@@ -166,7 +172,7 @@ export default function FindingsWorkbench() {
       </div>
 
       <div className="card" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <input type="text" placeholder="Search findings, questions or ISO clauses" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
+        <Input type="text" placeholder="Search findings, questions or ISO clauses" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
         <Chip label="All" count={findings.length} on={allOn} onClick={() => { setFPri(0); setFClass("all"); setFIso(""); }} />
         <Chip label="P3 Urgent" color={PRIC[3]} count={nOf(3)} on={fPri === 3} onClick={() => setFPri(fPri === 3 ? 0 : 3)} />
         <Chip label="P2 Material" color={PRIC[2]} count={nOf(2)} on={fPri === 2} onClick={() => setFPri(fPri === 2 ? 0 : 2)} />
@@ -174,15 +180,15 @@ export default function FindingsWorkbench() {
         <Chip label="Observed" color="var(--band-med)" count={nObs} on={fClass === CLASS.OBS} onClick={() => setFClass(fClass === CLASS.OBS ? "all" : CLASS.OBS)} />
         <Chip label="Supported" color="var(--amber, #b7791f)" count={nSup} on={fClass === CLASS.SUP} onClick={() => setFClass(fClass === CLASS.SUP ? "all" : CLASS.SUP)} />
         {nHyp ? <Chip label="Hypothesis" color="var(--muted)" count={nHyp} on={fClass === CLASS.HYP} onClick={() => setFClass(fClass === CLASS.HYP ? "all" : CLASS.HYP)} /> : null}
-        <select value={fIso} onChange={(e) => setFIso(e.target.value)} style={{ width: "auto" }}>
-          <option value="">ISO clause</option>
-          {isoNums.map((n) => <option key={n} value={n}>Clause {n}{ISO_LABEL[n] ? ` · ${ISO_LABEL[n]}` : ""}</option>)}
-        </select>
-        <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ width: "auto" }}>
-          <option value="pri">Priority first</option>
-          <option value="conf">Confidence first</option>
-          <option value="rev">Unreviewed first</option>
-        </select>
+        <NativeSelect value={fIso} onChange={(e) => setFIso(e.target.value)} style={{ width: "auto" }}>
+          <NativeSelectOption value="">ISO clause</NativeSelectOption>
+          {isoNums.map((n) => <NativeSelectOption key={n} value={n}>Clause {n}{ISO_LABEL[n] ? ` · ${ISO_LABEL[n]}` : ""}</NativeSelectOption>)}
+        </NativeSelect>
+        <NativeSelect value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ width: "auto" }}>
+          <NativeSelectOption value="pri">Priority first</NativeSelectOption>
+          <NativeSelectOption value="conf">Confidence first</NativeSelectOption>
+          <NativeSelectOption value="rev">Unreviewed first</NativeSelectOption>
+        </NativeSelect>
       </div>
 
       {!results ? <p className="muted">Loading…</p> : !findings.length ? (
@@ -210,7 +216,7 @@ export default function FindingsWorkbench() {
                       <span style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                         <span style={{ width: 8, height: 8, borderRadius: "50%", background: PRIC[f.severity], flex: "0 0 8px" }} />
                         <b style={{ fontSize: 13.5, flex: 1, minWidth: 140 }}>{f.title}</b>
-                        {reviews[f.id] ? <span className="pill open">✓</span> : null}
+                        {reviews[f.id] ? <Badge variant="secondary" data-tone="open"><Check className="inline size-4 -mt-0.5" /></Badge> : null}
                       </span>
                       <span className="small muted" style={{ display: "block", marginTop: 3 }}>
                         {f.klass} · {f.confidence}{f.iso ? ` · ISO ${f.iso}` : ""}
@@ -224,12 +230,12 @@ export default function FindingsWorkbench() {
 
           {active ? (
             <div className="card">
-              <span className="pill" style={{ background: PRIC[active.severity], color: "#fff" }}>{PRI[active.severity]}</span>
+              <Badge variant="secondary" style={{ background: PRIC[active.severity], color: "#fff" }}>{PRI[active.severity]}</Badge>
               <h2 style={{ margin: "10px 0 10px", fontSize: 21 }}>{active.title}</h2>
               <div className="small" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px 10px", margin: "0 0 14px" }}>
                 <span className={"pill " + chipCls(active.klass)}>{active.klass}</span>
                 <span className="muted">Confidence · {active.confidence}</span>
-                {active.iso ? <span className="pill violet">ISO 56001 · {active.iso}</span> : null}
+                {active.iso ? <Badge variant="secondary" data-tone="violet">ISO 56001 · {active.iso}</Badge> : null}
               </div>
 
               {active.trigger ? (
@@ -260,10 +266,10 @@ export default function FindingsWorkbench() {
               <p className="small muted" style={{ margin: "0 0 14px" }}>{active.evidence.join("  ")}</p>
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <Link className="btn btn-primary btn-sm" href="/insights/interventions">⇢ Add to intervention roadmap</Link>
-                <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => toggleReview(active)}>
-                  {reviews[active.id] ? "✓ Reviewed — undo" : "Mark reviewed"}
-                </button>
+                <Link className="btn btn-primary btn-sm" href="/insights/interventions"><ArrowRight className="inline size-4 -mt-0.5" /> Add to intervention roadmap</Link>
+                <Button variant="ghost" size="sm" disabled={busy} onClick={() => toggleReview(active)}>
+                  {reviews[active.id] ? <><Check className="inline size-4 -mt-0.5" /> Reviewed — undo</> : "Mark reviewed"}
+                </Button>
                 {sel ? <Link className="btn btn-ghost btn-sm" href={`/campaigns/${sel}/report`}>View in report</Link> : null}
               </div>
               {reviews[active.id] ? (
@@ -272,11 +278,11 @@ export default function FindingsWorkbench() {
                   <div style={{ borderTop: "1px solid var(--line)", marginTop: 10, paddingTop: 12 }}>
                     <div className="small" style={{ fontWeight: 800, marginBottom: 6 }}>Analyst notes <span className="muted" style={{ fontWeight: 400 }}>— carried into the report with this finding</span></div>
                     <label className="f">Contradictory evidence <span className="muted small">(what pushes against this conclusion?)</span></label>
-                    <textarea key={active.id + "_c"} maxLength={600} defaultValue={reviews[active.id].note_contradictory || ""}
+                    <Textarea key={active.id + "_c"} maxLength={600} defaultValue={reviews[active.id].note_contradictory || ""}
                       placeholder="e.g. Two customer comments describe fast idea turnaround, which cuts against the visibility pattern."
                       onBlur={(e) => saveNote(active, "note_contradictory", e.target.value)} style={{ minHeight: 64 }} />
                     <label className="f" style={{ marginTop: 8 }}>Alternative explanation <span className="muted small">(your reading, beyond the rule&apos;s own alternatives)</span></label>
-                    <textarea key={active.id + "_a"} maxLength={600} defaultValue={reviews[active.id].note_alternative || ""}
+                    <Textarea key={active.id + "_a"} maxLength={600} defaultValue={reviews[active.id].note_alternative || ""}
                       placeholder="e.g. The survey ran during retrenchment consultations — scores may reflect general anxiety rather than the innovation system."
                       onBlur={(e) => saveNote(active, "note_alternative", e.target.value)} style={{ minHeight: 64 }} />
                     <p className="small muted" style={{ margin: "6px 0 0" }}>Saved automatically when you click away.</p>

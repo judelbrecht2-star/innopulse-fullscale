@@ -5,6 +5,9 @@ import { sb, FN_BASE } from "../../../../lib/supabase";
 import { Shell, bandWord, bandOf, groupName } from "../../../ui";
 import { bestGaps, MIN_N } from "../../../lib/gaps";
 import { evaluateFindings } from "../../../lib/findings";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { WarningTriangle } from "iconoir-react";
 
 export default function ReportPage() {
   return <Suspense fallback={<p className="muted">Preparing report…</p>}><Report /></Suspense>;
@@ -104,12 +107,12 @@ function Report() {
       `}</style>
 
       <div className="noprint" style={{ margin: "6px 0 16px", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-        <button className="btn btn-primary btn-sm" onClick={() => window.print()}>Print / Save as PDF</button>
+        <Button size="sm" onClick={() => window.print()}>Print / Save as PDF</Button>
         <a className="btn btn-ghost btn-sm" href={`/campaigns/${id}`}>← Back to campaign</a>
         {snap ? (
-          <span className="pill teal">Frozen snapshot v{snap.version} · {new Date(snap.snapshot.generated_at).toLocaleString()} · {String(snap.checksum || "").slice(0, 8)}</span>
+          <Badge variant="secondary" data-tone="teal">Frozen snapshot v{snap.version} · {new Date(snap.snapshot.generated_at).toLocaleString()} · {String(snap.checksum || "").slice(0, 8)}</Badge>
         ) : (
-          <span className="pill draft" title="Live preview recalculates from current data — generate a report on the Reports page for an immutable version">Live preview — not a versioned report</span>
+          <Badge variant="outline" data-tone="draft" title="Live preview recalculates from current data — generate a report on the Reports page for an immutable version">Live preview — not a versioned report</Badge>
         )}
       </div>
 
@@ -185,7 +188,7 @@ function Report() {
                     <td>{nameOfType(e.hiType)} · <b>{e.hi}</b></td>
                     <td>{nameOfType(e.loType)} · <b>{e.lo}</b></td>
                     <td className="small muted">{e.items}</td>
-                    <td><b>{e.d}</b>{e.d >= 20 ? " ⚠" : ""}</td>
+                    <td><b>{e.d}</b>{e.d >= 20 ? <WarningTriangle className="inline size-4 -mt-0.5" /> : ""}</td>
                   </tr>
                 ))}
               </tbody>

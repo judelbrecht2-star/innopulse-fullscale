@@ -3,6 +3,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { sb } from "../../lib/supabase";
 import { I } from "../ui";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export default function Login() {
   const router = useRouter();
@@ -76,24 +78,24 @@ export default function Login() {
           {mfa ? (
             <form onSubmit={verifyMfa}>
               <label className="f">Two-factor code</label>
-              <input type="text" inputMode="numeric" autoFocus value={code} onChange={(e) => setCode(e.target.value)}
+              <Input type="text" inputMode="numeric" autoFocus value={code} onChange={(e) => setCode(e.target.value)}
                 placeholder="6-digit code from your authenticator app" autoComplete="one-time-code" />
               <div style={{ marginTop: 14 }}>
-                <button className="btn btn-primary" disabled={busy} style={{ width: "100%", justifyContent: "center" }}>
+                <Button disabled={busy} style={{ width: "100%", justifyContent: "center" }}>
                   {busy ? "Verifying…" : "Verify"}
-                </button>
+                </Button>
               </div>
             </form>
           ) : (
           <form onSubmit={submit}>
             <label className="f">Email</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="username" />
+            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="username" />
             <label className="f">Password</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
+            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
             <div style={{ marginTop: 18 }}>
-              <button className="btn btn-primary" disabled={busy} style={{ width: "100%", justifyContent: "center" }}>
+              <Button disabled={busy} style={{ width: "100%", justifyContent: "center" }}>
                 {busy ? "Signing in…" : "Sign in"}
-              </button>
+              </Button>
             </div>
           </form>
           )}

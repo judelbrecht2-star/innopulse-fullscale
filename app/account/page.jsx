@@ -3,6 +3,12 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { sb, FN_BASE } from "../../lib/supabase";
 import { Shell } from "../ui";
+import { Button } from "@/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Check } from "iconoir-react";
 
 const ROLE_HELP = {
   owner: "Full control — campaigns, settings, team, and below-threshold detail",
@@ -158,33 +164,33 @@ export default function Account() {
           {tErr ? <div className="err">{tErr}</div> : null}
           {tMsg ? <div className="ok">{tMsg}</div> : null}
           {!members ? <p className="muted small">Loading team…</p> : (
-            <table className="t">
-              <thead><tr><th>Member</th><th>Role</th><th></th></tr></thead>
-              <tbody>
+            <Table>
+              <TableHeader><TableRow><TableHead>Member</TableHead><TableHead>Role</TableHead><TableHead></TableHead></TableRow></TableHeader>
+              <TableBody>
                 {members.map((m) => (
-                  <tr key={m.user_id}>
-                    <td className="small">{m.email || m.user_id}{m.you ? <span className="pill teal" style={{ marginLeft: 8 }}>you</span> : null}</td>
-                    <td className="small" title={ROLE_HELP[m.role] || ""}><span className="pill draft">{m.role}</span></td>
-                    <td style={{ textAlign: "right" }}>
+                  <TableRow key={m.user_id}>
+                    <TableCell className="small">{m.email || m.user_id}{m.you ? <Badge variant="secondary" data-tone="teal" style={{ marginLeft: 8 }}>you</Badge> : null}</TableCell>
+                    <TableCell className="small" title={ROLE_HELP[m.role] || ""}><Badge variant="outline" data-tone="draft">{m.role}</Badge></TableCell>
+                    <TableCell style={{ textAlign: "right" }}>
                       {role === "owner" && !m.you ? (
-                        <button className="btn btn-ghost btn-sm" disabled={tBusy} onClick={() => removeMember(m.user_id)}>Remove</button>
+                        <Button variant="ghost" size="sm" disabled={tBusy} onClick={() => removeMember(m.user_id)}>Remove</Button>
                       ) : null}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           )}
           {role === "owner" ? (
             <form onSubmit={invite} style={{ marginTop: 14 }}>
               <label className="f">Invite a teammate</label>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <input type="email" value={invEmail} onChange={(e) => setInvEmail(e.target.value)}
+                <Input type="email" value={invEmail} onChange={(e) => setInvEmail(e.target.value)}
                   placeholder="colleague@company.com" style={{ flex: 1, minWidth: 220 }} />
-                <select value={invRole} onChange={(e) => setInvRole(e.target.value)} style={{ width: "auto" }}>
-                  {["manager", "analyst", "viewer", "owner"].map((r) => <option key={r} value={r}>{r}</option>)}
-                </select>
-                <button className="btn btn-primary btn-sm" disabled={tBusy}>{tBusy ? "Working…" : "Invite"}</button>
+                <NativeSelect value={invRole} onChange={(e) => setInvRole(e.target.value)} style={{ width: "auto" }}>
+                  {["manager", "analyst", "viewer", "owner"].map((r) => <NativeSelectOption key={r} value={r}>{r}</NativeSelectOption>)}
+                </NativeSelect>
+                <Button size="sm" disabled={tBusy}>{tBusy ? "Working…" : "Invite"}</Button>
               </div>
               <p className="small muted" style={{ marginTop: 8 }}>
                 {ROLE_HELP[invRole]}. New addresses get an email invitation to set a password;
@@ -205,10 +211,10 @@ export default function Account() {
         {mfaMsg ? <div className={mfaMsg.includes("✓") ? "ok" : "err"}>{mfaMsg}</div> : null}
         {factors === null ? <p className="muted small">Loading…</p> : factors.some((f) => f.status === "verified") ? (
           <>
-            <p className="small">✓ Enabled — a code from your authenticator app is required at sign-in.</p>
+            <p className="small"><Check className="inline size-4 -mt-0.5" /> Enabled — a code from your authenticator app is required at sign-in.</p>
             {factors.map((f) => (
               <p key={f.id} className="small muted">{f.friendly_name || "Authenticator"} · added {new Date(f.created_at).toLocaleDateString()}{" "}
-                <button className="btn btn-ghost btn-sm" onClick={() => removeFactor(f.id)}>Remove</button></p>
+                <Button variant="ghost" size="sm" onClick={() => removeFactor(f.id)}>Remove</Button></p>
             ))}
           </>
         ) : enroll ? (
@@ -218,14 +224,14 @@ export default function Account() {
             <img src={enroll.qr} alt="TOTP enrolment QR code" style={{ width: 180, height: 180, background: "#fff", padding: 8, borderRadius: 10 }} />
             <p className="small muted">Can&apos;t scan? Manual key: <code style={{ fontSize: 12 }}>{enroll.secret}</code></p>
             <div style={{ display: "flex", gap: 8, maxWidth: 340 }}>
-              <input type="text" inputMode="numeric" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} placeholder="123456" />
-              <button className="btn btn-primary btn-sm" onClick={confirmEnroll}>Activate</button>
+              <Input type="text" inputMode="numeric" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} placeholder="123456" />
+              <Button size="sm" onClick={confirmEnroll}>Activate</Button>
             </div>
           </>
         ) : (
           <>
             <p className="small muted">Protect your account with a 6-digit code from an authenticator app, required at every sign-in.</p>
-            <button className="btn btn-primary btn-sm" onClick={startEnroll}>Enable two-factor authentication</button>
+            <Button size="sm" onClick={startEnroll}>Enable two-factor authentication</Button>
           </>
         )}
       </div>
@@ -237,11 +243,11 @@ export default function Account() {
         {msg ? <div className="ok">{msg}</div> : null}
         <form onSubmit={change}>
           <label className="f">New password</label>
-          <input type="password" value={pw1} onChange={(e) => setPw1(e.target.value)} autoComplete="new-password" />
+          <Input type="password" value={pw1} onChange={(e) => setPw1(e.target.value)} autoComplete="new-password" />
           <label className="f">Repeat new password</label>
-          <input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} autoComplete="new-password" />
+          <Input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} autoComplete="new-password" />
           <div style={{ marginTop: 16 }}>
-            <button className="btn btn-primary" disabled={busy}>{busy ? "Saving…" : "Change password"}</button>
+            <Button disabled={busy}>{busy ? "Saving…" : "Change password"}</Button>
           </div>
         </form>
       </div>

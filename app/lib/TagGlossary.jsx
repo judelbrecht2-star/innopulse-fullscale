@@ -1,4 +1,6 @@
 "use client";
+import { Badge } from "@/components/ui/badge";
+import { InfoCircle } from "iconoir-react";
 // Collapsible legend explaining the finding tags (evidence class, confidence,
 // priority, ISO 56001 clause). Used on /insights and /insights/findings.
 
@@ -16,7 +18,7 @@ export default function TagGlossary({ open = false }) {
   return (
     <details open={open} style={{ border: "1px solid var(--line)", borderRadius: 12, padding: "10px 16px", margin: "12px 0", background: "#fdfbf7" }}>
       <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 13.5, listStyle: "none", display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 15 }}>ⓘ</span> How to read the tags
+        <span style={{ fontSize: 15 }}><InfoCircle className="inline size-4 -mt-0.5" /></span> How to read the tags
         <span className="small muted" style={{ fontWeight: 400 }}>— evidence class · confidence · priority · ISO 56001</span>
       </summary>
 
@@ -24,17 +26,17 @@ export default function TagGlossary({ open = false }) {
         <div>
           <div className="small" style={{ fontWeight: 700, marginBottom: 6 }}>Evidence class — how solid is it?</div>
           <p className="small" style={{ margin: "0 0 6px", lineHeight: 1.55 }}>
-            <span className="pill teal">Observed finding</span><br />
+            <Badge variant="secondary" data-tone="teal">Observed finding</Badge><br />
             Measured directly in the numbers (participation, don&apos;t-know rates, score
             levels). No interpretation involved — the strongest class.
           </p>
           <p className="small" style={{ margin: "0 0 6px", lineHeight: 1.55 }}>
-            <span className="pill draft">Supported interpretation</span><br />
+            <Badge variant="outline" data-tone="draft">Supported interpretation</Badge><br />
             A consistent pattern across several questions, read through a well-documented
             organisational dynamic. Grounded, but it is a reading of the data.
           </p>
           <p className="small" style={{ margin: 0, lineHeight: 1.55 }}>
-            <span className="pill closed">Plausible hypothesis</span><br />
+            <Badge variant="outline" data-tone="closed">Plausible hypothesis</Badge><br />
             A credible explanation the data hints at but cannot prove. Treat it as a
             question to investigate, never as a conclusion.
           </p>
@@ -60,7 +62,7 @@ export default function TagGlossary({ open = false }) {
         <div>
           <div className="small" style={{ fontWeight: 700, marginBottom: 6 }}>ISO 56001 — where it lands in the standard</div>
           <p className="small" style={{ margin: "0 0 8px", lineHeight: 1.55 }}>
-            <span className="pill violet">ISO Clause 9 · Performance evaluation</span><br />
+            <Badge variant="secondary" data-tone="violet">ISO Clause 9 · Performance evaluation</Badge><br />
             Maps the finding to the clause of <b>ISO 56001:2024</b> (the international
             innovation-management-system standard) it affects — useful when the assessment
             feeds a readiness or certification conversation.

@@ -3,6 +3,13 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { sb, FN_BASE } from "../../lib/supabase";
 import { Shell, I, GROUP_META, GROUP_BAR, groupName } from "../ui";
+import { Button } from "@/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Check, Download, Lock, Plus, ShieldCheck } from "iconoir-react";
 
 const PILLAR_NAMES = { sii: "Strategic intent", iem: "Environment", oic: "Capability", ipm: "Process", roi: "Return on innovation" };
 function csvEsc(v) { const s = String(v ?? ""); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
@@ -239,12 +246,12 @@ export default function Responses() {
           <p className="lead">Monitor participation, review data quality and read written feedback from each stakeholder group.</p>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button className="btn btn-ghost" onClick={() => exportCsv(false)}>⭱ Export responses</button>
-          <button className="btn btn-primary" disabled={!canManage} title={canManage ? "" : "Owners and managers only"}
-            onClick={() => { setRemOpen((v) => !v); if (!remGroup && groups.length) setRemGroup(groups[0].id); }}>✈ Send reminders</button>
-          <select value={sel} onChange={(e) => setSel(e.target.value)} style={{ width: "auto", fontWeight: 600 }}>
-            {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          <Button variant="ghost" onClick={() => exportCsv(false)}><Download className="inline size-4 -mt-0.5" /> Export responses</Button>
+          <Button disabled={!canManage} title={canManage ? "" : "Owners and managers only"}
+            onClick={() => { setRemOpen((v) => !v); if (!remGroup && groups.length) setRemGroup(groups[0].id); }}>✈ Send reminders</Button>
+          <NativeSelect value={sel} onChange={(e) => setSel(e.target.value)} style={{ width: "auto", fontWeight: 600 }}>
+            {campaigns.map((c) => <NativeSelectOption key={c.id} value={c.id}>{c.name}</NativeSelectOption>)}
+          </NativeSelect>
         </div>
       </div>
       {err ? <div className="err">{err}</div> : null}
@@ -266,17 +273,17 @@ export default function Responses() {
             they are never stored or connected to responses.
           </p>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
-            <select value={remGroup} onChange={(e) => setRemGroup(e.target.value)} style={{ width: "auto" }}>
-              {groups.map((g) => <option key={g.id} value={g.id}>{groupName(g)}</option>)}
-            </select>
+            <NativeSelect value={remGroup} onChange={(e) => setRemGroup(e.target.value)} style={{ width: "auto" }}>
+              {groups.map((g) => <NativeSelectOption key={g.id} value={g.id}>{groupName(g)}</NativeSelectOption>)}
+            </NativeSelect>
           </div>
           <label className="f">Email addresses <span className="muted">(comma or new-line separated, max 100)</span></label>
-          <textarea value={remEmails} onChange={(e) => setRemEmails(e.target.value)} placeholder="ana@company.com, ben@company.com" />
+          <Textarea value={remEmails} onChange={(e) => setRemEmails(e.target.value)} placeholder="ana@company.com, ben@company.com" />
           <label className="f">Personal note <span className="muted">(optional)</span></label>
-          <textarea value={remMsg} onChange={(e) => setRemMsg(e.target.value)} placeholder="A short line from you, shown in the email." />
+          <Textarea value={remMsg} onChange={(e) => setRemMsg(e.target.value)} placeholder="A short line from you, shown in the email." />
           {remState ? <p className="small" style={{ color: remState.startsWith("Sent") ? "var(--green, #2f855a)" : "var(--primary)" }}>{remState}</p> : null}
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-            <button className="btn btn-primary btn-sm" disabled={busy} onClick={async () => {
+            <Button size="sm" disabled={busy} onClick={async () => {
               const emails = remEmails.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean);
               if (!emails.length) { setRemState("Enter at least one email address."); return; }
               setBusy(true); setRemState("Sending…");
@@ -292,8 +299,8 @@ export default function Responses() {
                 if (r.ok) setRemEmails("");
               } catch { setRemState("Could not send — network problem."); }
               setBusy(false);
-            }}>Send</button>
-            <button className="btn btn-ghost btn-sm" onClick={() => { setRemOpen(false); setRemState(""); }}>Close</button>
+            }}>Send</Button>
+            <Button variant="ghost" size="sm" onClick={() => { setRemOpen(false); setRemState(""); }}>Close</Button>
           </div>
         </div>
       ) : null}
@@ -313,10 +320,10 @@ export default function Responses() {
               <span className="frac">{n} / {g.target_n || "—"}</span>
               <span className="bar"><i style={{ width: pct + "%", background: GROUP_BAR[g.type] || "var(--primary)" }} /></span>
               <span className="pct">{pct}%</span>
-              {n < threshold ? <span className="privnote">🔒 hidden until {threshold} completed</span> : <span className="privnote" style={{ visibility: "hidden" }}>ok</span>}
+              {n < threshold ? <span className="privnote"><Lock className="inline size-4 -mt-0.5" /> hidden until {threshold} completed</span> : <span className="privnote" style={{ visibility: "hidden" }}>ok</span>}
               <span className="small muted" style={{ width: 110 }}>{lastForGroup ? `last ${ago(lastForGroup.submitted_at)}` : "no responses yet"}</span>
               {link ? (
-                <button className="btn btn-ghost btn-sm" onClick={() => copyLink(link.token)}>{copied === link.token ? "Copied ✓" : "Copy link"}</button>
+                <Button variant="ghost" size="sm" onClick={() => copyLink(link.token)}>{copied === link.token ? "Copied" : "Copy link"}</Button>
               ) : <span className="small muted">no active link</span>}
             </div>
           );
@@ -325,68 +332,68 @@ export default function Responses() {
 
       <div className="card">
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-          <input type="text" placeholder="Search response reference or written feedback" value={q}
+          <Input type="text" placeholder="Search response reference or written feedback" value={q}
             onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 220 }} />
-          <select value={fGroup} onChange={(e) => setFGroup(e.target.value)} style={{ width: "auto" }}>
-            <option value="all">All groups</option>
-            {groups.map((g) => <option key={g.id} value={g.id}>{groupName(g)}</option>)}
-          </select>
-          <select value={fStatus} onChange={(e) => setFStatus(e.target.value)} style={{ width: "auto" }}>
+          <NativeSelect value={fGroup} onChange={(e) => setFGroup(e.target.value)} style={{ width: "auto" }}>
+            <NativeSelectOption value="all">All groups</NativeSelectOption>
+            {groups.map((g) => <NativeSelectOption key={g.id} value={g.id}>{groupName(g)}</NativeSelectOption>)}
+          </NativeSelect>
+          <NativeSelect value={fStatus} onChange={(e) => setFStatus(e.target.value)} style={{ width: "auto" }}>
             {["all", "Completed", "In progress", "Not started", "Abandoned", "Excluded", "Test"].map((s) => (
-              <option key={s} value={s}>{s === "all" ? "All statuses" : s}</option>
+              <NativeSelectOption key={s} value={s}>{s === "all" ? "All statuses" : s}</NativeSelectOption>
             ))}
-          </select>
-          <select value={fQuality} onChange={(e) => setFQuality(e.target.value)} style={{ width: "auto" }}>
-            {["all", "Good", "Review", "Test"].map((s) => <option key={s} value={s}>{s === "all" ? "Data quality" : s}</option>)}
-          </select>
+          </NativeSelect>
+          <NativeSelect value={fQuality} onChange={(e) => setFQuality(e.target.value)} style={{ width: "auto" }}>
+            {["all", "Good", "Review", "Test"].map((s) => <NativeSelectOption key={s} value={s}>{s === "all" ? "Data quality" : s}</NativeSelectOption>)}
+          </NativeSelect>
           <label className="small" style={{ display: "flex", alignItems: "center", gap: 7 }}>
             <input type="checkbox" checked={fComments} onChange={(e) => setFComments(e.target.checked)} /> Has written responses
           </label>
         </div>
 
-        <table className="t">
-          <thead>
-            <tr>
-              <th style={{ width: 30 }}></th>
-              <th>Respondent</th><th>Group</th><th>Status</th><th>Progress</th>
-              <th>Written</th><th>DK/NA</th><th>Quality</th><th>When</th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead style={{ width: 30 }}></TableHead>
+              <TableHead>Respondent</TableHead><TableHead>Group</TableHead><TableHead>Status</TableHead><TableHead>Progress</TableHead>
+              <TableHead>Written</TableHead><TableHead>DK/NA</TableHead><TableHead>Quality</TableHead><TableHead>When</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={9} className="muted small">No responses match these filters yet.</td></tr>
+              <TableRow><TableCell colSpan={9} className="muted small">No responses match these filters yet.</TableCell></TableRow>
             ) : filtered.map((row) => (
-              <tr key={row.id} style={{
+              <TableRow key={row.id} style={{
                 cursor: row.kind === "response" ? "pointer" : "default",
                 background: drawer?.id === row.id ? "var(--primary-soft)" : GROUP_TINT[row.group?.type] || undefined,
                 boxShadow: row.group ? `inset 3px 0 0 ${GROUP_BAR[row.group.type] || "var(--muted)"}` : undefined,
               }}
                 onClick={() => openDrawer(row)}>
-                <td onClick={(e) => e.stopPropagation()}>
+                <TableCell onClick={(e) => e.stopPropagation()}>
                   {row.kind === "response" ? (
                     <input type="checkbox" checked={!!checks[row.id]}
                       onChange={(e) => setChecks((s) => ({ ...s, [row.id]: e.target.checked }))} />
                   ) : null}
-                </td>
-                <td><b>{row.ref}</b></td>
-                <td className="small">{groupName(row.group) || "—"}</td>
-                <td><span className={"pill " + statusPill(row.status)}>{row.status}</span></td>
-                <td className="small">
+                </TableCell>
+                <TableCell><b>{row.ref}</b></TableCell>
+                <TableCell className="small">{groupName(row.group) || "—"}</TableCell>
+                <TableCell><span className={"pill " + statusPill(row.status)}>{row.status}</span></TableCell>
+                <TableCell className="small">
                   {row.kind === "invite" ? "—" : `${row.answered} / ${row.total || "—"}`}
                   {row.kind !== "invite" && row.total ? (
                     <span className="bar" style={{ display: "inline-block", width: 70, height: 6, background: "#e8e8ec", borderRadius: 99, marginLeft: 8, verticalAlign: "middle", overflow: "hidden" }}>
                       <i style={{ display: "block", height: "100%", width: Math.min(100, Math.round((row.answered / row.total) * 100)) + "%", background: "var(--teal)", borderRadius: 99 }} />
                     </span>
                   ) : null}
-                </td>
-                <td className="small">{row.nComments ? `${row.nComments} comment${row.nComments === 1 ? "" : "s"}` : "—"}</td>
-                <td className="small">{row.dkPct == null ? "—" : row.dkPct + "%"}</td>
-                <td>{row.quality ? <span className={"pill " + (row.quality === "Good" ? "open" : row.quality === "Test" ? "violet" : "draft")}>{row.quality}</span> : "—"}</td>
-                <td className="small muted">{row.whenLabel}</td>
-              </tr>
+                </TableCell>
+                <TableCell className="small">{row.nComments ? `${row.nComments} comment${row.nComments === 1 ? "" : "s"}` : "—"}</TableCell>
+                <TableCell className="small">{row.dkPct == null ? "—" : row.dkPct + "%"}</TableCell>
+                <TableCell>{row.quality ? <span className={"pill " + (row.quality === "Good" ? "open" : row.quality === "Test" ? "violet" : "draft")}>{row.quality}</span> : "—"}</TableCell>
+                <TableCell className="small muted">{row.whenLabel}</TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
         <p className="small muted" style={{ marginTop: 10 }}>
           Respondents are anonymous by design — references are assigned in order of submission and
           carry no identity. In-progress rows come from live autosave beacons; unique invitations
@@ -425,29 +432,29 @@ export default function Responses() {
               if (detail.error) return <div className="err" style={{ marginTop: 14 }}>Could not load this response.</div>;
               if (detail.locked) return (
                 <div className="lockrow" style={{ marginTop: 16 }}>
-                  🔒 This group has {detail.have} of {detail.needed} responses. To protect respondents
+                  <Lock className="inline size-4 -mt-0.5" /> This group has {detail.have} of {detail.needed} responses. To protect respondents
                   in small groups, per-response answers and written feedback stay on the server until
                   the group passes the anonymity threshold (the owner can view sooner).
                 </div>
               );
               return (
                 <>
-                  <div className="vbanner">🛡 These are the respondent&apos;s verbatim comments — not an AI summary.</div>
+                  <div className="vbanner"><ShieldCheck className="inline size-4 -mt-0.5" /> These are the respondent&apos;s verbatim comments — not an AI summary.</div>
 
                   <h2 style={{ fontSize: 15, margin: "14px 0 8px" }}>Pillar breakdown</h2>
-                  <table className="t">
-                    <thead><tr><th>Pillar</th><th>Score</th><th>Answered</th><th>DK/NA</th></tr></thead>
-                    <tbody>
+                  <Table>
+                    <TableHeader><TableRow><TableHead>Pillar</TableHead><TableHead>Score</TableHead><TableHead>Answered</TableHead><TableHead>DK/NA</TableHead></TableRow></TableHeader>
+                    <TableBody>
                       {(detail.pillars || []).map((d) => (
-                        <tr key={d.pid}>
-                          <td className="small"><b>{PILLAR_NAMES[d.pid] || d.pid}</b></td>
-                          <td className="small">{d.score ?? "—"}</td>
-                          <td className="small">{d.n}</td>
-                          <td className="small">{d.dk}</td>
-                        </tr>
+                        <TableRow key={d.pid}>
+                          <TableCell className="small"><b>{PILLAR_NAMES[d.pid] || d.pid}</b></TableCell>
+                          <TableCell className="small">{d.score ?? "—"}</TableCell>
+                          <TableCell className="small">{d.n}</TableCell>
+                          <TableCell className="small">{d.dk}</TableCell>
+                        </TableRow>
                       ))}
-                    </tbody>
-                  </table>
+                    </TableBody>
+                  </Table>
                   <p className="small muted" style={{ margin: "6px 0 0" }}>
                     Individual-level view — access is audit-logged, visible only to your team,
                     never to respondents or in reports.
@@ -461,7 +468,7 @@ export default function Responses() {
                           <span className="pn">{PILLAR_NAMES[cm.pillar] || cm.pillar}</span>
                           <span className="tag">Verbatim response</span>
                           {canManage || role === "analyst" ? (
-                            <button className="btn btn-ghost btn-sm" disabled={busy} style={{ marginLeft: "auto" }}
+                            <Button variant="ghost" size="sm" disabled={busy} style={{ marginLeft: "auto" }}
                               onClick={async () => {
                                 setBusy(true);
                                 try {
@@ -477,14 +484,14 @@ export default function Responses() {
                                 } catch { setErr("Could not update."); }
                                 setBusy(false);
                               }}>
-                              {cm.in_report ? "✓ In report — remove" : "＋ Add to report"}
-                            </button>
-                          ) : cm.in_report ? <span className="pill teal" style={{ marginLeft: "auto" }}>In report</span> : null}
+                              {cm.in_report ? "In report — remove" : "Add to report"}
+                            </Button>
+                          ) : cm.in_report ? <Badge variant="secondary" data-tone="teal" style={{ marginLeft: "auto" }}>In report</Badge> : null}
                         </div>
                         <p>{cm.body}</p>
                         {canManage || role === "analyst" ? (
                           <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                            <input type="text" defaultValue={(cm.themes || []).join(", ")} placeholder="Themes, comma-separated — e.g. workload, recognition"
+                            <Input type="text" defaultValue={(cm.themes || []).join(", ")} placeholder="Themes, comma-separated — e.g. workload, recognition"
                               style={{ flex: 1, fontSize: 12.5, padding: "5px 9px" }}
                               onBlur={async (e) => {
                                 const themes = e.target.value.split(",").map((x) => x.trim()).filter(Boolean);
@@ -520,15 +527,15 @@ export default function Responses() {
             {canManage ? (
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 18 }}>
                 {drawer.r.flag !== "review" ? (
-                  <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => { setRespState([drawer.id], { flag: "review" }); setDrawer(null); }}>⚑ Flag for review</button>
+                  <Button variant="ghost" size="sm" disabled={busy} onClick={() => { setRespState([drawer.id], { flag: "review" }); setDrawer(null); }}>⚑ Flag for review</Button>
                 ) : (
-                  <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => { setRespState([drawer.id], { flag: null }); setDrawer(null); }}>Clear flag</button>
+                  <Button variant="ghost" size="sm" disabled={busy} onClick={() => { setRespState([drawer.id], { flag: null }); setDrawer(null); }}>Clear flag</Button>
                 )}
-                <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => { setRespState([drawer.id], { valid: false, flag: "test" }); setDrawer(null); }}>Mark as test</button>
+                <Button variant="ghost" size="sm" disabled={busy} onClick={() => { setRespState([drawer.id], { valid: false, flag: "test" }); setDrawer(null); }}>Mark as test</Button>
                 {drawer.r.valid ? (
-                  <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => { setRespState([drawer.id], { valid: false, flag: null }); setDrawer(null); }}>Exclude from results</button>
+                  <Button size="sm" disabled={busy} onClick={() => { setRespState([drawer.id], { valid: false, flag: null }); setDrawer(null); }}>Exclude from results</Button>
                 ) : (
-                  <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => { setRespState([drawer.id], { valid: true, flag: null }); setDrawer(null); }}>Restore to results</button>
+                  <Button size="sm" disabled={busy} onClick={() => { setRespState([drawer.id], { valid: true, flag: null }); setDrawer(null); }}>Restore to results</Button>
                 )}
               </div>
             ) : null}

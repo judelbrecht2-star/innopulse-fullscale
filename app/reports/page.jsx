@@ -7,6 +7,13 @@ import { Shell, I, groupName } from "../ui";
 import { evaluateFindings } from "../lib/findings";
 import { generateWordReport } from "../lib/reportgen";
 import { computeTrend } from "../lib/trends";
+import { Button } from "@/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Check } from "iconoir-react";
 
 const TYPES = {
   executive: { label: "Executive", pill: "violet", desc: "Board-ready web report (print / save as PDF)" },
@@ -213,9 +220,9 @@ export default function Reports() {
           <p className="lead">Turn campaign findings into clear, decision-ready reports.</p>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <select value={genFor} onChange={(e) => setGenFor(e.target.value)} style={{ width: "auto", fontWeight: 600 }}>
-            {camps.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          <NativeSelect value={genFor} onChange={(e) => setGenFor(e.target.value)} style={{ width: "auto", fontWeight: 600 }}>
+            {camps.map((c) => <NativeSelectOption key={c.id} value={c.id}>{c.name}</NativeSelectOption>)}
+          </NativeSelect>
           <details className="rowmenu">
             <summary className="btn btn-primary" style={{ listStyle: "none", cursor: "pointer" }}>+ Generate report</summary>
             <div className="dd">
@@ -242,21 +249,21 @@ export default function Reports() {
         </summary>
         <div style={{ marginTop: 12 }}>
           <label className="f">Client context <span className="muted">(who they are, in their words — the report&apos;s introduction)</span></label>
-          <textarea value={content.client_context} onChange={(e) => setContent((c) => ({ ...c, client_context: e.target.value }))}
+          <Textarea value={content.client_context} onChange={(e) => setContent((c) => ({ ...c, client_context: e.target.value }))}
             placeholder="e.g. A proudly South African technology solutions provider serving the financial, engineering and mining sectors for over 20 years…" />
           <label className="f">Engagement objective <span className="muted">(why this assessment was commissioned)</span></label>
-          <textarea value={content.engagement_objective} onChange={(e) => setContent((c) => ({ ...c, engagement_objective: e.target.value }))}
+          <Textarea value={content.engagement_objective} onChange={(e) => setContent((c) => ({ ...c, engagement_objective: e.target.value }))}
             placeholder="e.g. Establish an innovation-capability baseline to inform the innovation strategy and track progress in future cycles." />
           {PILLARS.map(([pid, nm]) => (
             <div key={pid}>
               <label className="f">{nm} — summary of written responses <span className="muted">(analyst-written, optional)</span></label>
-              <textarea value={notes[pid] || ""} onChange={(e) => setNotes((n) => ({ ...n, [pid]: e.target.value }))}
+              <Textarea value={notes[pid] || ""} onChange={(e) => setNotes((n) => ({ ...n, [pid]: e.target.value }))}
                 placeholder="Themes in this pillar's written feedback — descriptive, no individual identifiable." />
             </div>
           ))}
           <div style={{ marginTop: 10 }}>
-            <button className="btn btn-primary btn-sm" disabled={busy || !genFor} onClick={saveContent}>Save report content</button>
-            {saved ? <span className="small" style={{ color: "var(--green, #2f855a)", marginLeft: 10 }}>Saved ✓</span> : null}
+            <Button size="sm" disabled={busy || !genFor} onClick={saveContent}>Save report content</Button>
+            {saved ? <span className="small" style={{ color: "var(--green, #2f855a)", marginLeft: 10 }}>Saved <Check className="inline size-4 -mt-0.5" /></span> : null}
           </div>
         </div>
       </details>
@@ -264,38 +271,38 @@ export default function Reports() {
       <div className="card">
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
           <h2 style={{ margin: 0, flex: 1 }}>Report library</h2>
-          <input type="text" placeholder="Search reports" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 220 }} />
-          <select value={fCamp} onChange={(e) => setFCamp(e.target.value)} style={{ width: "auto" }}>
-            <option value="all">All campaigns</option>
-            {camps.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          <Input type="text" placeholder="Search reports" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 220 }} />
+          <NativeSelect value={fCamp} onChange={(e) => setFCamp(e.target.value)} style={{ width: "auto" }}>
+            <NativeSelectOption value="all">All campaigns</NativeSelectOption>
+            {camps.map((c) => <NativeSelectOption key={c.id} value={c.id}>{c.name}</NativeSelectOption>)}
+          </NativeSelect>
         </div>
         {!filtered.length ? (
           <p className="muted small">No reports yet — pick a campaign and use “+ Generate report”. Executive reports open the print-ready view; the other types download live CSV evidence packs.</p>
         ) : (
-          <table className="t">
-            <thead><tr><th>Report</th><th>Campaign</th><th>Type</th><th>Status</th><th>Created</th><th></th></tr></thead>
-            <tbody>
+          <Table>
+            <TableHeader><TableRow><TableHead>Report</TableHead><TableHead>Campaign</TableHead><TableHead>Type</TableHead><TableHead>Status</TableHead><TableHead>Created</TableHead><TableHead></TableHead></TableRow></TableHeader>
+            <TableBody>
               {filtered.map((r) => (
-                <tr key={r.id}>
-                  <td><b>{r.title}</b><div className="small muted">{TYPES[r.rtype]?.desc}{r.checksum ? ` · snapshot ${r.checksum.slice(0, 8)}` : " · legacy (live data)"}</div></td>
-                  <td className="small">{campName(r.campaign_id)}</td>
-                  <td><span className={"pill " + (TYPES[r.rtype]?.pill || "draft")}>{TYPES[r.rtype]?.label || r.rtype}</span></td>
-                  <td><span className="pill open">Ready</span></td>
-                  <td className="small muted">{new Date(r.created_at).toLocaleDateString()}</td>
-                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                    <button className="btn btn-primary btn-sm" onClick={() => open(r)}>{r.rtype === "executive" ? "View" : "Download"}</button>{" "}
+                <TableRow key={r.id}>
+                  <TableCell><b>{r.title}</b><div className="small muted">{TYPES[r.rtype]?.desc}{r.checksum ? ` · snapshot ${r.checksum.slice(0, 8)}` : " · legacy (live data)"}</div></TableCell>
+                  <TableCell className="small">{campName(r.campaign_id)}</TableCell>
+                  <TableCell><span className={"pill " + (TYPES[r.rtype]?.pill || "draft")}>{TYPES[r.rtype]?.label || r.rtype}</span></TableCell>
+                  <TableCell><Badge variant="secondary" data-tone="open">Ready</Badge></TableCell>
+                  <TableCell className="small muted">{new Date(r.created_at).toLocaleDateString()}</TableCell>
+                  <TableCell style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                    <Button size="sm" onClick={() => open(r)}>{r.rtype === "executive" ? "View" : "Download"}</Button>{" "}
                     {r.rtype === "executive" && r.snapshot ? (
-                      <><button className="btn btn-ghost btn-sm" disabled={busy}
+                      <><Button variant="ghost" size="sm" disabled={busy}
                         onClick={async () => { setBusy(true); try { await generateWordReport(r, interps); } catch (e) { setErr(String(e.message || e)); } setBusy(false); }}>
-                        Word (.docx)</button>{" "}</>
+                        Word (.docx)</Button>{" "}</>
                     ) : null}
-                    <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => remove(r.id)}>Remove</button>
-                  </td>
-                </tr>
+                    <Button variant="ghost" size="sm" disabled={busy} onClick={() => remove(r.id)}>Remove</Button>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         )}
         <p className="small muted" style={{ marginTop: 10 }}>
           Each generated report is an immutable, checksummed snapshot — re-downloading the same

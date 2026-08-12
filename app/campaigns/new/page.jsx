@@ -4,6 +4,9 @@ import { useRouter } from "next/navigation";
 import { sb } from "../../../lib/supabase";
 import { Shell } from "../../ui";
 import { DEMO_DIMS } from "../../lib/demographics";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 
 const GROUP_DEFS = [
   { type: "executive", label: "Executives & leadership", hint: "Board, exco, senior leaders", def: 5 },
@@ -112,17 +115,17 @@ export default function NewCampaign() {
         <form onSubmit={create}>
           <div className="card" style={{ maxWidth: 640 }}>
             <label className="f">Campaign name</label>
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)}
+            <Input type="text" value={name} onChange={(e) => setName(e.target.value)}
               placeholder="e.g. 2026 H2 innovation health check" />
             <div className="grid2" style={{ marginTop: 6 }}>
               <div>
                 <label className="f">Collection window (days)</label>
-                <input type="text" inputMode="numeric" value={days}
+                <Input type="text" inputMode="numeric" value={days}
                   onChange={(e) => setDays(e.target.value.replace(/\D/g, ""))} />
               </div>
               <div>
                 <label className="f">Anonymity threshold (min responses per group)</label>
-                <input type="text" inputMode="numeric" value={threshold}
+                <Input type="text" inputMode="numeric" value={threshold}
                   onChange={(e) => setThreshold(e.target.value.replace(/\D/g, ""))} />
               </div>
             </div>
@@ -131,15 +134,15 @@ export default function NewCampaign() {
               Minimum 4 — recommended 5. This floor is also enforced server-side.
             </p>
             <label className="f" style={{ marginTop: 10 }}>Questionnaire</label>
-            <select value={verId} onChange={(e) => setVerId(e.target.value)}>
+            <NativeSelect value={verId} onChange={(e) => setVerId(e.target.value)}>
               {versions.map((v) => (
-                <option key={v.id} value={v.id}>
+                <NativeSelectOption key={v.id} value={v.id}>
                   {v.version === "1.0"
                     ? `v${v.version} — classic (same 50 questions for every group)`
                     : `v${v.version} — stakeholder-tailored (recommended)${v.version.includes("draft") ? " (draft)" : ""}`}
-                </option>
+                </NativeSelectOption>
               ))}
-            </select>
+            </NativeSelect>
             <p className="small muted" style={{ marginTop: 6 }}>
               The tailored version serves each stakeholder group only the questions written
               for them; the classic version shows everyone the same set.
@@ -155,7 +158,7 @@ export default function NewCampaign() {
                     onChange={(e) => setGroups((s) => ({ ...s, [g.type]: { ...s[g.type], on: e.target.checked } }))} />
                   {g.type === "other" ? (
                     <span style={{ flex: 1, display: "flex", alignItems: "center", gap: 8 }}>
-                      <input type="text" value={groups[g.type].label}
+                      <Input type="text" value={groups[g.type].label}
                         onClick={(e) => e.preventDefault()}
                         onChange={(e) => setGroups((s) => ({ ...s, [g.type]: { ...s[g.type], label: e.target.value } }))}
                         placeholder="Type the stakeholder name, e.g. Board members"
@@ -167,7 +170,7 @@ export default function NewCampaign() {
                   )}
                 </label>
                 <span className="small muted">target</span>
-                <input type="text" inputMode="numeric" value={groups[g.type].target}
+                <Input type="text" inputMode="numeric" value={groups[g.type].target}
                   onChange={(e) => setGroups((s) => ({ ...s, [g.type]: { ...s[g.type], target: e.target.value.replace(/\D/g, "") } }))}
                   style={{ width: 70 }} />
               </div>
@@ -196,7 +199,7 @@ export default function NewCampaign() {
                   </span>
                 </label>
                 {d.custom && demoOn[d.id] ? (
-                  <input type="text" value={demoCustom[d.id] || ""}
+                  <Input type="text" value={demoCustom[d.id] || ""}
                     onChange={(e) => setDemoCustom((s) => ({ ...s, [d.id]: e.target.value }))}
                     placeholder={d.id === "language" ? "Leave empty for the standard list, or type your own, comma-separated" : (d.placeholder || "Comma-separated options")}
                     style={{ marginTop: 8, marginLeft: 28, width: "calc(100% - 28px)" }} />
@@ -206,9 +209,9 @@ export default function NewCampaign() {
           </div>
 
           {err ? <div className="err">{err}</div> : null}
-          <button className="btn btn-primary" disabled={busy}>
+          <Button disabled={busy}>
             {busy ? "Creating…" : "Create draft campaign"}
-          </button>
+          </Button>
           <p className="small muted" style={{ marginTop: 8 }}>
             The campaign starts as a <b>draft</b> with its links ready — review everything on the
             campaign page, then launch with “Open collection”. Nothing is collected until you do.

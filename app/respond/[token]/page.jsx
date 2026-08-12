@@ -2,6 +2,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { FN_BASE } from "../../../lib/supabase";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Check } from "iconoir-react";
 
 export default function Respond() {
   const { token } = useParams();
@@ -146,7 +150,7 @@ export default function Respond() {
 
   if (state === "done") return (
     <div className="rshell"><div style={{ maxWidth: 560, margin: "60px auto" }} className="card">
-      <h1>Thank you ✓</h1>
+      <h1>Thank you <Check className="inline size-4 -mt-0.5" /></h1>
       <p>{thanks || "Your responses have been recorded."}</p>
       <p className="muted small">
         No name or email is stored with your answers. Reports and dashboards only ever show
@@ -192,9 +196,9 @@ export default function Respond() {
           </span>
         </label>
         <div style={{ marginTop: 16 }}>
-          <button className="btn btn-primary" disabled={!consent} onClick={() => { setState("form"); beacon(0, total, true); }}>
+          <Button disabled={!consent} onClick={() => { setState("form"); beacon(0, total, true); }}>
             Start the assessment →
-          </button>
+          </Button>
         </div>
       </div>
     </div></div>
@@ -230,14 +234,14 @@ export default function Respond() {
             {data.campaign.demographics.map((dim) => (
               <div key={dim.id}>
                 <label className="f">{dim.question || dim.label}</label>
-                <select
+                <NativeSelect
                   value={demo[dim.id] || ""}
                   onChange={(e) => setDemo((d) => ({ ...d, [dim.id]: e.target.value }))}
                   style={{ maxWidth: 340 }}
                 >
-                  <option value="">Prefer not to say</option>
-                  {(dim.options || []).map((o) => <option key={o} value={o}>{o}</option>)}
-                </select>
+                  <NativeSelectOption value="">Prefer not to say</NativeSelectOption>
+                  {(dim.options || []).map((o) => <NativeSelectOption key={o} value={o}>{o}</NativeSelectOption>)}
+                </NativeSelect>
               </div>
             ))}
           </div>
@@ -245,10 +249,10 @@ export default function Respond() {
       ) : data.campaign?.segments?.length ? (
         <div className="qblock">
           <div className="qtext">Which area do you work in / deal with? <span className="muted">(optional — used only for group-level analysis, hidden below the anonymity threshold)</span></div>
-          <select value={segment} onChange={(e) => setSegment(e.target.value)} style={{ maxWidth: 340 }}>
-            <option value="">Prefer not to say</option>
-            {data.campaign.segments.map((sg) => <option key={sg} value={sg}>{sg}</option>)}
-          </select>
+          <NativeSelect value={segment} onChange={(e) => setSegment(e.target.value)} style={{ maxWidth: 340 }}>
+            <NativeSelectOption value="">Prefer not to say</NativeSelectOption>
+            {data.campaign.segments.map((sg) => <NativeSelectOption key={sg} value={sg}>{sg}</NativeSelectOption>)}
+          </NativeSelect>
         </div>
       ) : null}
 
@@ -276,7 +280,7 @@ export default function Respond() {
           ))}
           <div style={{ margin: "16px 0 8px" }}>
             <label className="f">{p.commentPrompt} <span className="muted">(optional)</span></label>
-            <textarea
+            <Textarea
               value={comments[p.id] || ""}
               onChange={(e) => setComments((c) => ({ ...c, [p.id]: e.target.value }))}
               placeholder="Optional — your comments are anonymous."
@@ -287,9 +291,9 @@ export default function Respond() {
 
       {err ? <div className="err">{err}</div> : null}
       <div style={{ margin: "22px 0 40px" }}>
-        <button className="btn btn-primary" onClick={submit} disabled={state === "sending"}>
+        <Button onClick={submit} disabled={state === "sending"}>
           {state === "sending" ? "Submitting…" : "Submit my responses"}
-        </button>
+        </Button>
         <p className="small muted" style={{ marginTop: 8 }}>
           Progress autosaves on this device until you submit.
         </p>

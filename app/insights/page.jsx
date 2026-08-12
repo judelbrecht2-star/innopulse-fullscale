@@ -8,6 +8,11 @@ import { sharedPillarScores, MIN_ITEMS, MIN_N } from "../lib/gaps";
 import { evaluateFindings, CLASS } from "../lib/findings";
 import { computeTrend, fmtDelta, deltaColor } from "../lib/trends";
 import TagGlossary from "../lib/TagGlossary";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { ArrowRight, Lock, WarningTriangle } from "iconoir-react";
+import { Download } from "iconoir-react";
 
 function FindingCard({ f }) {
   const chip = f.klass === CLASS.OBS ? "teal" : f.klass === CLASS.SUP ? "draft" : "closed";
@@ -19,7 +24,7 @@ function FindingCard({ f }) {
         <b style={{ fontSize: 14 }}>{f.title}</b>
         <span className={"pill " + chip}>{f.klass}</span>
         <span className="small muted">confidence: {f.confidence}</span>
-        {f.iso ? <span className="pill violet" title="ISO 56001:2024 readiness area">ISO {f.iso}</span> : null}
+        {f.iso ? <Badge variant="secondary" data-tone="violet" title="ISO 56001:2024 readiness area">ISO {f.iso}</Badge> : null}
       </summary>
       <p className="small" style={{ margin: "10px 0 6px", lineHeight: 1.6 }}>{f.text}</p>
       <p className="small muted" style={{ margin: "6px 0" }}>{f.evidence.join("  ")}</p>
@@ -143,11 +148,11 @@ export default function Insights() {
           <p className="lead">Compare how each stakeholder group experiences the organisation&apos;s innovation system.</p>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          {sel ? <Link className="btn btn-ghost" href={`/campaigns/${sel}/report`}>⭱ Export report</Link> : null}
-          {sel ? <Link className="btn btn-primary" href="/insights/interventions">Recommended interventions →</Link> : null}
-          <select value={sel} onChange={(e) => setSel(e.target.value)} style={{ width: "auto", fontWeight: 600 }}>
-            {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          {sel ? <Link className="btn btn-ghost" href={`/campaigns/${sel}/report`}><Download className="inline size-4 -mt-0.5" /> Export report</Link> : null}
+          {sel ? <Link className="btn btn-primary" href="/insights/interventions">Recommended interventions <ArrowRight className="inline size-4 -mt-0.5" /></Link> : null}
+          <NativeSelect value={sel} onChange={(e) => setSel(e.target.value)} style={{ width: "auto", fontWeight: 600 }}>
+            {campaigns.map((c) => <NativeSelectOption key={c.id} value={c.id}>{c.name}</NativeSelectOption>)}
+          </NativeSelect>
         </div>
       </div>
       {err ? <div className="err">{err}</div> : null}
@@ -177,8 +182,8 @@ export default function Insights() {
           <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
             <h2 style={{ margin: 0 }}>Trend vs {trend.priorName}</h2>
             <span style={{ fontWeight: 800, fontSize: 22, color: deltaColor(trend.overall.d) }}>{fmtDelta(trend.overall.d)}</span>
-            <span className="small muted">overall ({trend.overall.prev} → {trend.overall.cur} · n {trend.n.prev} → {trend.n.cur})</span>
-            {!trend.comparable ? <span className="pill draft" title="The two cycles used different questionnaire versions">directional only — versions differ</span> : null}
+            <span className="small muted">overall ({trend.overall.prev} <ArrowRight className="inline size-4 -mt-0.5" /> {trend.overall.cur} · n {trend.n.prev} <ArrowRight className="inline size-4 -mt-0.5" /> {trend.n.cur})</span>
+            {!trend.comparable ? <Badge variant="outline" data-tone="draft" title="The two cycles used different questionnaire versions">directional only — versions differ</Badge> : null}
           </div>
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 10 }}>
             {trend.pillars.map((p) => (
@@ -194,7 +199,7 @@ export default function Insights() {
         <div className="card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
             <h2 style={{ margin: 0 }}>Automatic findings</h2>
-            <Link className="btn btn-primary btn-sm" href="/insights/findings">Review all {findings.length} findings →</Link>
+            <Link className="btn btn-primary btn-sm" href="/insights/findings">Review all {findings.length} findings <ArrowRight className="inline size-4 -mt-0.5" /></Link>
           </div>
           <TagGlossary />
           {findings.slice(0, 3).map((f) => <FindingCard key={f.id} f={f} />)}
@@ -213,13 +218,13 @@ export default function Insights() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
             <h2 style={{ margin: 0 }}>Stakeholder perception gap</h2>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <select value={gA} onChange={(e) => setGA(e.target.value)} style={{ width: "auto", fontSize: 13 }}>
-                {presentTypes.map((t) => <option key={t} value={t} disabled={t === gB}>{nameOfType(t)}</option>)}
-              </select>
+              <NativeSelect value={gA} onChange={(e) => setGA(e.target.value)} style={{ width: "auto", fontSize: 13 }}>
+                {presentTypes.map((t) => <NativeSelectOption key={t} value={t} disabled={t === gB}>{nameOfType(t)}</NativeSelectOption>)}
+              </NativeSelect>
               <span className="small muted">vs</span>
-              <select value={gB} onChange={(e) => setGB(e.target.value)} style={{ width: "auto", fontSize: 13 }}>
-                {presentTypes.map((t) => <option key={t} value={t} disabled={t === gA}>{nameOfType(t)}</option>)}
-              </select>
+              <NativeSelect value={gB} onChange={(e) => setGB(e.target.value)} style={{ width: "auto", fontSize: 13 }}>
+                {presentTypes.map((t) => <NativeSelectOption key={t} value={t} disabled={t === gA}>{nameOfType(t)}</NativeSelectOption>)}
+              </NativeSelect>
             </div>
           </div>
           <p className="small" style={{ margin: "8px 0 12px" }}>
@@ -266,7 +271,7 @@ export default function Insights() {
               ) : null}
               {smallSample ? (
                 <p className="small" style={{ marginTop: 8, color: "var(--amber, #b7791f)" }}>
-                  ⚠ Small samples ({nameOfType(gA)} n={A.n}, {nameOfType(gB)} n={B.n}) — differences based on fewer
+                  <WarningTriangle className="inline size-4 -mt-0.5" /> Small samples ({nameOfType(gA)} n={A.n}, {nameOfType(gB)} n={B.n}) — differences based on fewer
                   than {MIN_N} respondents per group are indicative, not conclusive.
                 </p>
               ) : null}
@@ -287,7 +292,7 @@ export default function Insights() {
                 ({biggest.d} points apart on {biggest.p.short}, measured on the {biggest.items} questions both answered).
                 Validate this gap before acting on the overall average.
               </p>
-              {sel ? <Link href={`/campaigns/${sel}`} style={{ fontWeight: 700 }}>Review campaign detail →</Link> : null}
+              {sel ? <Link href={`/campaigns/${sel}`} style={{ fontWeight: 700 }}>Review campaign detail <ArrowRight className="inline size-4 -mt-0.5" /></Link> : null}
             </>
           ) : null}
         </div>
@@ -297,54 +302,54 @@ export default function Insights() {
         <div className="card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
             <h2 style={{ margin: 0 }}>Demographic lens</h2>
-            <select value={curDim?.id || ""} onChange={(e) => { setDimSel(e.target.value); setDA(""); setDB(""); }} style={{ width: "auto", fontSize: 13, fontWeight: 600 }}>
-              {demoDims.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
-            </select>
+            <NativeSelect value={curDim?.id || ""} onChange={(e) => { setDimSel(e.target.value); setDA(""); setDB(""); }} style={{ width: "auto", fontSize: 13, fontWeight: 600 }}>
+              {demoDims.map((d) => <NativeSelectOption key={d.id} value={d.id}>{d.label}</NativeSelectOption>)}
+            </NativeSelect>
           </div>
           <p className="small muted" style={{ margin: "6px 0 12px" }}>
             Scores by {curDim?.label.toLowerCase()}. Groupings below the anonymity threshold stay hidden;
             respondents could always choose &quot;prefer not to say&quot;.
           </p>
-          <table className="t">
-            <thead>
-              <tr><th>{curDim?.label}</th><th>N</th>{pillars.map((p) => <th key={p.id}>{p.short}</th>)}<th>Score</th></tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader>
+              <TableRow><TableHead>{curDim?.label}</TableHead><TableHead>N</TableHead>{pillars.map((p) => <TableHead key={p.id}>{p.short}</TableHead>)}<TableHead>Score</TableHead></TableRow>
+            </TableHeader>
+            <TableBody>
               {(curDim?.options || []).map((o) => (
-                <tr key={o.name}>
-                  <td><b>{o.name}</b>{!o.suppressed && o.n < MIN_N ? <span className="pill draft" style={{ marginLeft: 8, textTransform: "none", fontSize: 11 }} title={`Clears the privacy threshold but has fewer than ${MIN_N} respondents — read as indicative, not conclusive`}>indicative</span> : null}</td>
-                  <td>{o.n}</td>
+                <TableRow key={o.name}>
+                  <TableCell><b>{o.name}</b>{!o.suppressed && o.n < MIN_N ? <Badge variant="outline" data-tone="draft" style={{ marginLeft: 8, textTransform: "none", fontSize: 11 }} title={`Clears the privacy threshold but has fewer than ${MIN_N} respondents — read as indicative, not conclusive`}>indicative</Badge> : null}</TableCell>
+                  <TableCell>{o.n}</TableCell>
                   {o.suppressed ? (
-                    <td colSpan={pillars.length + 1}>
-                      <div className="lockrow">🔒 Hidden until at least {results?.campaign?.anonymity_threshold} responses</div>
-                    </td>
+                    <TableCell colSpan={pillars.length + 1}>
+                      <div className="lockrow"><Lock className="inline size-4 -mt-0.5" /> Hidden until at least {results?.campaign?.anonymity_threshold} responses</div>
+                    </TableCell>
                   ) : (
                     <>
                       {pillars.map((p) => (
-                        <td key={p.id}>{o.pillars?.[p.id] == null ? <span className="muted">—</span> : <span className={"schip " + bandChip(o.pillars[p.id])}>{o.pillars[p.id]}</span>}</td>
+                        <TableCell key={p.id}>{o.pillars?.[p.id] == null ? <span className="muted">—</span> : <span className={"schip " + bandChip(o.pillars[p.id])}>{o.pillars[p.id]}</span>}</TableCell>
                       ))}
-                      <td><b>{o.score ?? "—"}</b></td>
+                      <TableCell><b>{o.score ?? "—"}</b></TableCell>
                     </>
                   )}
-                </tr>
+                </TableRow>
               ))}
               {curDim?.not_declared ? (
-                <tr><td className="muted">Prefer not to say</td><td className="muted">{curDim.not_declared}</td><td colSpan={pillars.length + 1} className="small muted">not included in cuts</td></tr>
+                <TableRow><TableCell className="muted">Prefer not to say</TableCell><TableCell className="muted">{curDim.not_declared}</TableCell><TableCell colSpan={pillars.length + 1} className="small muted">not included in cuts</TableCell></TableRow>
               ) : null}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
 
           {dOptA && dOptB && dOptA.name !== dOptB.name ? (
             <div style={{ marginTop: 16, borderTop: "1px solid var(--line)", paddingTop: 14 }}>
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <b style={{ fontSize: 14 }}>Compare:</b>
-                <select value={dA} onChange={(e) => setDA(e.target.value)} style={{ width: "auto", fontSize: 13 }}>
-                  {curDim.options.filter((o) => !o.suppressed).map((o) => <option key={o.name} value={o.name} disabled={o.name === dB}>{o.name}</option>)}
-                </select>
+                <NativeSelect value={dA} onChange={(e) => setDA(e.target.value)} style={{ width: "auto", fontSize: 13 }}>
+                  {curDim.options.filter((o) => !o.suppressed).map((o) => <NativeSelectOption key={o.name} value={o.name} disabled={o.name === dB}>{o.name}</NativeSelectOption>)}
+                </NativeSelect>
                 <span className="small muted">vs</span>
-                <select value={dB} onChange={(e) => setDB(e.target.value)} style={{ width: "auto", fontSize: 13 }}>
-                  {curDim.options.filter((o) => !o.suppressed).map((o) => <option key={o.name} value={o.name} disabled={o.name === dA}>{o.name}</option>)}
-                </select>
+                <NativeSelect value={dB} onChange={(e) => setDB(e.target.value)} style={{ width: "auto", fontSize: 13 }}>
+                  {curDim.options.filter((o) => !o.suppressed).map((o) => <NativeSelectOption key={o.name} value={o.name} disabled={o.name === dA}>{o.name}</NativeSelectOption>)}
+                </NativeSelect>
                 {dOptA.score != null && dOptB.score != null ? (
                   <span className="small" style={{ marginLeft: 6 }}>
                     overall Δ <b style={{ color: Math.abs(dOptA.score - dOptB.score) >= 15 ? "var(--primary)" : "inherit" }}>
@@ -381,45 +386,45 @@ export default function Insights() {
 
       <div className="card">
         <h2>Detailed stakeholder scores</h2>
-        <table className="t">
-          <thead>
-            <tr><th>Group</th><th>N</th>{pillars.map((p) => <th key={p.id}>{p.short}</th>)}<th>Don&apos;t know / N-A</th></tr>
-          </thead>
-          <tbody>
+        <Table>
+          <TableHeader>
+            <TableRow><TableHead>Group</TableHead><TableHead>N</TableHead>{pillars.map((p) => <TableHead key={p.id}>{p.short}</TableHead>)}<TableHead>Don&apos;t know / N-A</TableHead></TableRow>
+          </TableHeader>
+          <TableBody>
             {groups.map((g) => {
               const meta = GROUP_META[g.type] || { label: g.type, chip: "c-grey", icon: "people" };
               const Icon = I[meta.icon] || I.people;
               return (
-                <tr key={g.id}>
-                  <td><div className="gname"><span className={"chip " + meta.chip} style={{ width: 36, height: 36, flex: "0 0 36px" }}><Icon style={{ width: 17, height: 17 }} /></span><b>{groupName(g)}</b></div></td>
-                  <td>{g.n}</td>
+                <TableRow key={g.id}>
+                  <TableCell><div className="gname"><span className={"chip " + meta.chip} style={{ width: 36, height: 36, flex: "0 0 36px" }}><Icon style={{ width: 17, height: 17 }} /></span><b>{groupName(g)}</b></div></TableCell>
+                  <TableCell>{g.n}</TableCell>
                   {g.suppressed ? (
-                    <td colSpan={pillars.length + 1}>
-                      <div className="lockrow">🔒 Hidden until at least {results?.campaign?.anonymity_threshold} response{results?.campaign?.anonymity_threshold === 1 ? "" : "s"} (privacy protection)</div>
-                    </td>
+                    <TableCell colSpan={pillars.length + 1}>
+                      <div className="lockrow"><Lock className="inline size-4 -mt-0.5" /> Hidden until at least {results?.campaign?.anonymity_threshold} response{results?.campaign?.anonymity_threshold === 1 ? "" : "s"} (privacy protection)</div>
+                    </TableCell>
                   ) : (
                     <>
                       {pillars.map((p) => (
-                        <td key={p.id}>{g.pillars[p.id] == null ? <span className="muted">—</span> : <span className={"schip " + bandChip(g.pillars[p.id])}>{g.pillars[p.id]}</span>}</td>
+                        <TableCell key={p.id}>{g.pillars[p.id] == null ? <span className="muted">—</span> : <span className={"schip " + bandChip(g.pillars[p.id])}>{g.pillars[p.id]}</span>}</TableCell>
                       ))}
-                      <td className="small muted">{g.dkna_pct}%</td>
+                      <TableCell className="small muted">{g.dkna_pct}%</TableCell>
                     </>
                   )}
-                </tr>
+                </TableRow>
               );
             })}
             {overall ? (
-              <tr>
-                <td><b>All groups</b></td>
-                <td>{overall.n}</td>
+              <TableRow>
+                <TableCell><b>All groups</b></TableCell>
+                <TableCell>{overall.n}</TableCell>
                 {pillars.map((p) => (
-                  <td key={p.id}>{overall.pillars[p.id] == null ? "—" : <span className={"schip " + bandChip(overall.pillars[p.id])}>{overall.pillars[p.id]}</span>}</td>
+                  <TableCell key={p.id}>{overall.pillars[p.id] == null ? "—" : <span className={"schip " + bandChip(overall.pillars[p.id])}>{overall.pillars[p.id]}</span>}</TableCell>
                 ))}
-                <td><b>Overall {overall.score}</b></td>
-              </tr>
+                <TableCell><b>Overall {overall.score}</b></TableCell>
+              </TableRow>
             ) : null}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
         <p className="small muted" style={{ marginTop: 12 }}>
           <span className="legend-dot" style={{ background: "var(--band-low)" }} />Low &lt; 40
           <span className="legend-dot" style={{ background: "var(--band-med)", marginLeft: 14 }} />Medium 40–69

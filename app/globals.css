@@ -1,3 +1,130 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ==========================================================================
+   The Growth System — brand tokens mapped onto the shadcn/ui variable system.
+   Coral #e8332e stays the primary; the dark sidebar, teal/amber/blue/violet
+   stakeholder accents and the Low/Medium/High score bands are preserved.
+   ========================================================================== */
+:root {
+  --radius: 0.7rem;
+
+  /* surfaces */
+  --background: #f7f7f8;
+  --foreground: #17171a;
+  --card: #ffffff;
+  --card-foreground: #17171a;
+  --popover: #ffffff;
+  --popover-foreground: #17171a;
+
+  /* brand */
+  --primary: #e8332e;
+  --primary-foreground: #ffffff;
+  --secondary: #f0f0f2;
+  --secondary-foreground: #17171a;
+  --muted: #f4f4f6;
+  --muted-foreground: #6d6d76;
+  --accent: #fde7e6;
+  --accent-foreground: #c9241f;
+  --destructive: #c0392b;
+  --destructive-foreground: #ffffff;
+
+  --border: #ececef;
+  --input: #e3e3e7;
+  --ring: #e8332e;
+
+  /* dark sidebar (unchanged from the current shell) */
+  --sidebar: #1b1b1e;
+  --sidebar-foreground: #b9b9c0;
+  --sidebar-primary: #e8332e;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #2a2a2e;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #2a2a2e;
+  --sidebar-ring: #e8332e;
+
+  /* stakeholder + analysis accents (kept from the original palette) */
+  --tgs-teal: #0f9d8f;   --tgs-teal-soft: #e0f4f1;
+  --tgs-amber: #e8a13c;  --tgs-amber-soft: #fdf1dd;
+  --tgs-blue: #3b74d1;   --tgs-blue-soft: #e3edfb;
+  --tgs-green: #1a7f4b;  --tgs-green-soft: #e1f5e8;
+  --tgs-violet: #7a5bd6; --tgs-violet-soft: #eeeafb;
+  --tgs-grey-soft: #f0f0f2;
+  --band-low: #c0392b;   --band-med: #0e6b5f;  --band-high: #4a7a00;
+
+  /* charts (recharts/shadcn Chart compatibility) */
+  --chart-1: #e8332e; --chart-2: #0f9d8f; --chart-3: #e8a13c;
+  --chart-4: #3b74d1; --chart-5: #7a5bd6;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-teal: var(--tgs-teal);
+  --color-amber: var(--tgs-amber);
+  --color-blue: var(--tgs-blue);
+  --color-green: var(--tgs-green);
+  --color-violet: var(--tgs-violet);
+  --color-band-low: var(--band-low);
+  --color-band-med: var(--band-med);
+  --color-band-high: var(--band-high);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --font-sans: var(--font-ui), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-display: var(--font-display), Georgia, serif;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * { border-color: var(--border); }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: "cv02","cv03","cv04","ss01";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  /* Fraunces display face stays on headings — the editorial signature */
+  h1, h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: -0.01em; }
+}
+
+/* ==========================================================================
+   Legacy stylesheet — retained while pages migrate, trimmed as each lands.
+   ========================================================================== */
 :root{
   --primary:#e8332e; --primary-dark:#c9241f; --primary-soft:#fde7e6;
   --bg:#f7f7f8; --card:#ffffff; --ink:#17171a; --muted:#6d6d76;
@@ -294,4 +421,13 @@ table.t tr:last-child td{border-bottom:none}
   .sidebar,.noprint,.footer{display:none!important}
   body{background:#fff!important}
   .main{padding:0!important;max-width:none!important}
+}
+
+/* ---- Badge tones: keep the stakeholder / status colour semantics on shadcn Badge ---- */
+@layer components {
+  [data-slot="badge"][data-tone="open"]   { background: var(--tgs-green-soft); color: var(--tgs-green); border-color: transparent; }
+  [data-slot="badge"][data-tone="draft"]  { background: var(--tgs-amber-soft); color: #9a6410; border-color: transparent; }
+  [data-slot="badge"][data-tone="closed"] { background: var(--tgs-grey-soft); color: var(--muted-foreground); border-color: transparent; }
+  [data-slot="badge"][data-tone="teal"]   { background: var(--tgs-teal-soft); color: var(--band-med); border-color: transparent; }
+  [data-slot="badge"][data-tone="violet"] { background: var(--tgs-violet-soft); color: var(--tgs-violet); border-color: transparent; }
 }

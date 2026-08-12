@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import { sb, FN_BASE } from "../../lib/supabase";
 import { Shell, bandCls, bandWord, bandOf, GROUP_META, GROUP_BAR, groupName } from "../ui";
 import { bestGaps } from "../lib/gaps";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { ArrowRight } from "iconoir-react";
 
 const BARRIER = { sii: "Confusion", iem: "Resistance", oic: "Anxiety", ipm: "Frustration", roi: "False Starts" };
 
@@ -58,7 +61,7 @@ export default function Dashboard() {
           <div className="pagehead">
             <div>
               <h1>{org ? org.name : "Overview"}</h1>
-              <p className="lead">Your role: <b>{role || "—"}</b> · {campaigns.length} campaign{campaigns.length === 1 ? "" : "s"} · <Link href="/campaigns">manage campaigns →</Link></p>
+              <p className="lead">Your role: <b>{role || "—"}</b> · {campaigns.length} campaign{campaigns.length === 1 ? "" : "s"} · <Link href="/campaigns">manage campaigns <ArrowRight className="inline size-4 -mt-0.5" /></Link></p>
             </div>
           </div>
           {err ? <div className="err">{err}</div> : null}
@@ -151,32 +154,32 @@ function ExecOverview({ data }) {
         <div style={{ display: "flex", gap: 26, flexWrap: "wrap", alignItems: "center", marginTop: 10 }}>
           <Donut value={overall.score} />
           <div style={{ flex: 1, minWidth: 260 }}>
-            <table className="t">
-              <tbody>
-                <tr>
-                  <td className="small muted" style={{ width: 170 }}>Strongest capability</td>
-                  <td><b>{strongest ? strongest.p.name : "—"}</b> {strongest ? <span className={"score " + bandCls(strongest.v)}>{strongest.v}</span> : null}</td>
-                </tr>
-                <tr>
-                  <td className="small muted">Biggest constraint</td>
-                  <td>
+            <Table>
+              <TableBody>
+                <TableRow>
+                  <TableCell className="small muted" style={{ width: 170 }}>Strongest capability</TableCell>
+                  <TableCell><b>{strongest ? strongest.p.name : "—"}</b> {strongest ? <span className={"score " + bandCls(strongest.v)}>{strongest.v}</span> : null}</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="small muted">Biggest constraint</TableCell>
+                  <TableCell>
                     <b>{weakest ? weakest.p.name : "—"}</b> {weakest ? <span className={"score " + bandCls(weakest.v)}>{weakest.v}</span> : null}
                     {weakest ? <span className="small muted"> · shows up as {BARRIER[weakest.p.id]}</span> : null}
-                  </td>
-                </tr>
-                <tr>
-                  <td className="small muted">Responses</td>
-                  <td><b>{totalN}</b>{totalTarget ? <span className="small muted"> of {totalTarget} targeted ({coverage}%)</span> : null}</td>
-                </tr>
-                <tr>
-                  <td className="small muted">Confidence</td>
-                  <td>
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="small muted">Responses</TableCell>
+                  <TableCell><b>{totalN}</b>{totalTarget ? <span className="small muted"> of {totalTarget} targeted ({coverage}%)</span> : null}</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="small muted">Confidence</TableCell>
+                  <TableCell>
                     {confidence ? <span className={"pill " + (confidence === "High" ? "open" : confidence === "Medium" ? "draft" : "closed")}>{confidence}</span> : "—"}
                     <span className="small muted"> coverage {coverage ?? "—"}% · don&apos;t-know {dknaAvg ?? "—"}%</span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
           </div>
         </div>
       )}
@@ -206,7 +209,7 @@ function ExecOverview({ data }) {
           ) : picks.slice(0, 3).map((k, i) => (
             <div key={i} className="small" style={{ padding: "7px 0", borderBottom: "1px solid var(--line)" }}>
               <b>{i + 1}.</b> {k.label}
-              {k.service ? <div><span className="pill draft" style={{ marginTop: 4 }}>{k.service}</span></div> : null}
+              {k.service ? <div><Badge variant="outline" data-tone="draft" style={{ marginTop: 4 }}>{k.service}</Badge></div> : null}
             </div>
           ))}
         </div>

@@ -4,6 +4,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { sb } from "../../lib/supabase";
 import { Shell, I, GROUP_META, groupName } from "../ui";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { ArrowRight, WarningTriangle } from "iconoir-react";
 
 function randToken() {
   const b = new Uint8Array(8); crypto.getRandomValues(b);
@@ -109,6 +114,7 @@ export default function Campaigns() {
         name: c.name.replace(/\s*—\s*next cycle.*$/, "") + " — next cycle",
         status: "draft", questionnaire_version_id: c.questionnaire_version_id,
         anonymity_threshold: c.anonymity_threshold, created_by: user.id,
+        prior_campaign_id: c.id, // Step 5: links the cycle chain for trend reporting
       }).select("id").single();
       if (e2 || !created) throw new Error(e2?.message || "Could not duplicate.");
       const gs = groups.filter((g) => g.campaign_id === c.id);
@@ -126,11 +132,11 @@ export default function Campaigns() {
   }
 
   const stChip = (c, s) => {
-    if (c.status === "draft") return <span className="pill draft">Draft</span>;
-    if (c.status === "archived") return <span className="pill closed">Archived</span>;
-    if (c.status === "closed") return <span className="pill closed">Closed · reporting</span>;
-    if (s.scheduled) return <span className="pill teal">Scheduled</span>;
-    return <span className="pill open">Open</span>;
+    if (c.status === "draft") return <Badge variant="outline" data-tone="draft">Draft</Badge>;
+    if (c.status === "archived") return <Badge variant="outline" data-tone="closed">Archived</Badge>;
+    if (c.status === "closed") return <Badge variant="outline" data-tone="closed">Closed · reporting</Badge>;
+    if (s.scheduled) return <Badge variant="secondary" data-tone="teal">Scheduled</Badge>;
+    return <Badge variant="secondary" data-tone="open">Open</Badge>;
   };
 
   return (
@@ -155,18 +161,18 @@ export default function Campaigns() {
       </div>
 
       <div className="card" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <input type="text" placeholder="Search campaigns" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
-        <select value={fStatus} onChange={(e) => setFStatus(e.target.value)} style={{ width: "auto" }}>
-          <option value="active">All except archived</option><option value="open">Open</option>
-          <option value="draft">Draft</option><option value="closed">Closed</option><option value="archived">Archived</option>
-        </select>
-        <select value={sort} onChange={(e) => setSort(e.target.value)} style={{ width: "auto" }}>
-          <option value="newest">Newest first</option><option value="closing">Closing soon</option><option value="activity">Recent activity</option>
-        </select>
+        <Input type="text" placeholder="Search campaigns" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
+        <NativeSelect value={fStatus} onChange={(e) => setFStatus(e.target.value)} style={{ width: "auto" }}>
+          <NativeSelectOption value="active">All except archived</NativeSelectOption><NativeSelectOption value="open">Open</NativeSelectOption>
+          <NativeSelectOption value="draft">Draft</NativeSelectOption><NativeSelectOption value="closed">Closed</NativeSelectOption><NativeSelectOption value="archived">Archived</NativeSelectOption>
+        </NativeSelect>
+        <NativeSelect value={sort} onChange={(e) => setSort(e.target.value)} style={{ width: "auto" }}>
+          <NativeSelectOption value="newest">Newest first</NativeSelectOption><NativeSelectOption value="closing">Closing soon</NativeSelectOption><NativeSelectOption value="activity">Recent activity</NativeSelectOption>
+        </NativeSelect>
       </div>
 
       {!filtered.length ? (
-        <div className="card"><p className="muted">No campaigns match. {canManage ? <Link href="/campaigns/new">Create one →</Link> : null}</p></div>
+        <div className="card"><p className="muted">No campaigns match. {canManage ? <Link href="/campaigns/new">Create one <ArrowRight className="inline size-4 -mt-0.5" /></Link> : null}</p></div>
       ) : filtered.map(({ c, s }) => (
         <div className="card" key={c.id}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
@@ -183,7 +189,7 @@ export default function Campaigns() {
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
               <Link className="btn btn-primary btn-sm" href={`/campaigns/${c.id}`}>View campaign</Link>
-              <button className="btn btn-ghost btn-sm" disabled title="Email reminders arrive with the notifications build">✈ Send reminders</button>
+              <Button variant="ghost" size="sm" disabled title="Email reminders arrive with the notifications build">✈ Send reminders</Button>
               <details className="rowmenu">
                 <summary className="iconbtn" style={{ fontWeight: 800 }}>⋯</summary>
                 <div className="dd">
@@ -226,7 +232,7 @@ export default function Campaigns() {
           </div>
 
           {s.warns.length ? (
-            <p className="small" style={{ margin: "10px 0 0", color: "var(--amber, #b7791f)" }}>⚠ {s.warns.join(" · ")}</p>
+            <p className="small" style={{ margin: "10px 0 0", color: "var(--amber, #b7791f)" }}><WarningTriangle className="inline size-4 -mt-0.5" /> {s.warns.join(" · ")}</p>
           ) : null}
         </div>
       ))}

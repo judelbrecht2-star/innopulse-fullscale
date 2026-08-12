@@ -6,6 +6,13 @@ import { sb, FN_BASE } from "../../../lib/supabase";
 import { Shell, I, bandCls, bandWord, bandOf, GROUP_META, GROUP_BAR, groupName } from "../../ui";
 import { bestGaps, MIN_N } from "../../lib/gaps";
 import { DEMO_DIMS } from "../../lib/demographics";
+import { Button } from "@/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { ArrowRight, Check, EditPencil, Plus, ShieldCheck } from "iconoir-react";
 
 function randToken() {
   const b = new Uint8Array(8);
@@ -283,9 +290,9 @@ export default function Campaign() {
       </div>
 
       <div className="card">
-        <table className="t">
-          <thead><tr><th>Group</th><th>Status</th><th>Signed link</th><th>Responses</th><th>Completion</th><th style={{ textAlign: "right" }}>Actions</th></tr></thead>
-          <tbody>
+        <Table>
+          <TableHeader><TableRow><TableHead>Group</TableHead><TableHead>Status</TableHead><TableHead>Signed link</TableHead><TableHead>Responses</TableHead><TableHead>Completion</TableHead><TableHead style={{ textAlign: "right" }}>Actions</TableHead></TableRow></TableHeader>
+          <TableBody>
             {groups.map((g) => {
               const meta = GROUP_META[g.type] || { label: g.type, chip: "c-grey", icon: "people" };
               const Icon = I[meta.icon] || I.people;
@@ -294,27 +301,27 @@ export default function Campaign() {
               const n = r?.n || 0;
               const pct = g.target_n ? Math.min(100, Math.round((n / g.target_n) * 100)) : 0;
               return (
-                <tr key={g.id}>
-                  <td>
+                <TableRow key={g.id}>
+                  <TableCell>
                     <div className="gname">
                       <span className={"chip " + meta.chip}><Icon /></span>
                       <span><div className="nm">{groupName(g)}</div>{groupName(g) !== g.label ? <div className="sub">{g.label}</div> : null}</span>
                     </div>
-                  </td>
-                  <td>{l ? <span className="pill open">Active</span> : <span className="pill closed">No link</span>}</td>
-                  <td>
+                  </TableCell>
+                  <TableCell>{l ? <Badge variant="secondary" data-tone="open">Active</Badge> : <Badge variant="outline" data-tone="closed">No link</Badge>}</TableCell>
+                  <TableCell>
                     {l ? (
                       <span className="codebox">/respond/{l.token}
                         <button title="Copy link" onClick={() => copy(l.token)}><I.copy /></button>
                       </span>
                     ) : <span className="small muted">—</span>}
-                  </td>
-                  <td style={{ whiteSpace: "nowrap" }}>
+                  </TableCell>
+                  <TableCell style={{ whiteSpace: "nowrap" }}>
                     <b>{n}</b>{" "}
                     {tEdit?.gid === g.id ? (
                       <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
                         <span className="small muted">/</span>
-                        <input type="text" inputMode="numeric" autoFocus value={tEdit.val}
+                        <Input type="text" inputMode="numeric" autoFocus value={tEdit.val}
                           onChange={(e) => setTEdit({ gid: g.id, val: e.target.value.replace(/\D/g, "") })}
                           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); saveTarget(); } if (e.key === "Escape") setTEdit(null); }}
                           onBlur={saveTarget}
@@ -324,24 +331,24 @@ export default function Campaign() {
                       <button type="button" className="small muted" title="Edit the target number of people for this group"
                         onClick={() => setTEdit({ gid: g.id, val: String(g.target_n ?? "") })}
                         style={{ background: "none", border: "none", cursor: "pointer", padding: 0, textDecoration: "underline dotted", color: "var(--muted)" }}>
-                        / {g.target_n || "—"} ✎
+                        / {g.target_n || "—"} <EditPencil className="inline size-4 -mt-0.5" />
                       </button>
                     ) : (
                       <span className="small muted">/ {g.target_n || "—"}</span>
                     )}
-                  </td>
-                  <td>
+                  </TableCell>
+                  <TableCell>
                     <div className="cbar">
                       <div className="track"><div className="fill" style={{ width: pct + "%", background: GROUP_BAR[g.type] || "var(--primary)" }} /></div>
                       <span className="pct">{pct}%</span>
                     </div>
-                  </td>
-                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                  </TableCell>
+                  <TableCell style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                     {l ? (
                       <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
-                        <button className="btn btn-outline btn-sm" onClick={() => copy(l.token)}>
-                          {copied === l.token ? "Copied ✓" : "Copy link"}
-                        </button>
+                        <Button variant="outline" size="sm" onClick={() => copy(l.token)}>
+                          {copied === l.token ? <>Copied <Check className="inline size-4 -mt-0.5" /></> : "Copy link"}
+                        </Button>
                         <button className="iconbtn" title="QR code" onClick={() => showQr(l.token)}><I.qr /></button>
                         {canManage ? (
                           <details className="rowmenu">
@@ -354,24 +361,24 @@ export default function Campaign() {
                         ) : null}
                       </span>
                     ) : canManage ? (
-                      <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => regenerateLink(g.id)}>New link</button>
+                      <Button size="sm" disabled={busy} onClick={() => regenerateLink(g.id)}>New link</Button>
                     ) : null}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               );
             })}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
         {canManage ? (
           <div style={{ marginTop: 12 }}>
             {addName === null ? (
-              <button className="btn btn-ghost btn-sm" onClick={() => setAddName("")}>+ Add stakeholder group</button>
+              <Button variant="ghost" size="sm" onClick={() => setAddName("")}>+ Add stakeholder group</Button>
             ) : (
               <span style={{ display: "flex", gap: 8, maxWidth: 480 }}>
-                <input type="text" value={addName} onChange={(e) => setAddName(e.target.value)}
+                <Input type="text" value={addName} onChange={(e) => setAddName(e.target.value)}
                   placeholder="Type the stakeholder name, e.g. Board members" autoFocus />
-                <button className="btn btn-primary btn-sm" disabled={busy} onClick={addGroup}>Add</button>
-                <button className="btn btn-ghost btn-sm" onClick={() => setAddName(null)}>Cancel</button>
+                <Button size="sm" disabled={busy} onClick={addGroup}>Add</Button>
+                <Button variant="ghost" size="sm" onClick={() => setAddName(null)}>Cancel</Button>
               </span>
             )}
             <div className="small muted" style={{ marginTop: 6 }}>
@@ -398,12 +405,12 @@ export default function Campaign() {
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "0 0 18px" }}>
         {canManage ? (c.status !== "open" ? (
-          <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => setStatus("open")}>Open collection</button>
+          <Button size="sm" disabled={busy} onClick={() => setStatus("open")}>Open collection</Button>
         ) : (
-          <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => setStatus("closed")}>Close collection</button>
+          <Button variant="ghost" size="sm" disabled={busy} onClick={() => setStatus("closed")}>Close collection</Button>
         )) : null}
-        <button className="btn btn-ghost btn-sm" onClick={exportSummary} disabled={!results}>⬇ Results CSV</button>
-        <button className="btn btn-ghost btn-sm" onClick={exportQuestions} disabled={!results}>⬇ Question detail CSV</button>
+        <Button variant="ghost" size="sm" onClick={exportSummary} disabled={!results}>⬇ Results CSV</Button>
+        <Button variant="ghost" size="sm" onClick={exportQuestions} disabled={!results}>⬇ Question detail CSV</Button>
         <Link className="btn btn-ghost btn-sm" href={`/campaigns/${id}/report`}>Report view (print / PDF)</Link>
       </div>
 
@@ -415,34 +422,34 @@ export default function Campaign() {
             answers. Each link dies after one submission.
           </p>
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
-            <select value={uniqGroup} onChange={(e) => setUniqGroup(e.target.value)} style={{ width: "auto" }}>
-              {groups.map((g) => <option key={g.id} value={g.id}>{groupName(g)}</option>)}
-            </select>
-            <input type="text" inputMode="numeric" value={uniqCount}
+            <NativeSelect value={uniqGroup} onChange={(e) => setUniqGroup(e.target.value)} style={{ width: "auto" }}>
+              {groups.map((g) => <NativeSelectOption key={g.id} value={g.id}>{groupName(g)}</NativeSelectOption>)}
+            </NativeSelect>
+            <Input type="text" inputMode="numeric" value={uniqCount}
               onChange={(e) => setUniqCount(e.target.value.replace(/\D/g, ""))} style={{ width: 70 }} />
-            <button className="btn btn-primary btn-sm" disabled={busy} onClick={generateUnique}>Generate</button>
+            <Button size="sm" disabled={busy} onClick={generateUnique}>Generate</Button>
           </div>
           {uniqueLinks.length === 0 ? <p className="muted small">None yet.</p> : (
-            <table className="t">
-              <thead><tr><th>Group</th><th>Link</th><th>Status</th><th></th></tr></thead>
-              <tbody>
+            <Table>
+              <TableHeader><TableRow><TableHead>Group</TableHead><TableHead>Link</TableHead><TableHead>Status</TableHead><TableHead></TableHead></TableRow></TableHeader>
+              <TableBody>
                 {uniqueLinks.map((l) => {
                   const used = l.used_count >= (l.max_uses || 1) || !l.active;
                   return (
-                    <tr key={l.id}>
-                      <td className="small">{groupName(groupById[l.group_id]) || "—"}</td>
-                      <td><span className="codebox">/respond/{l.token}</span></td>
-                      <td><span className={"pill " + (used ? "closed" : "open")}>{used ? "used" : "unused"}</span></td>
-                      <td style={{ textAlign: "right" }}>{!used ? (
-                        <button className="btn btn-ghost btn-sm" onClick={() => copy(l.token)}>
+                    <TableRow key={l.id}>
+                      <TableCell className="small">{groupName(groupById[l.group_id]) || "—"}</TableCell>
+                      <TableCell><span className="codebox">/respond/{l.token}</span></TableCell>
+                      <TableCell><span className={"pill " + (used ? "closed" : "open")}>{used ? "used" : "unused"}</span></TableCell>
+                      <TableCell style={{ textAlign: "right" }}>{!used ? (
+                        <Button variant="ghost" size="sm" onClick={() => copy(l.token)}>
                           {copied === l.token ? "Copied ✓" : "Copy"}
-                        </button>
-                      ) : null}</td>
-                    </tr>
+                        </Button>
+                      ) : null}</TableCell>
+                    </TableRow>
                   );
                 })}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           )}
         </div>
       ) : null}
@@ -457,8 +464,8 @@ export default function Campaign() {
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <Link className="btn btn-primary btn-sm" href="/insights">Open Insights →</Link>
-          <Link className="btn btn-ghost btn-sm" href="/insights/interventions">Interventions →</Link>
+          <Link className="btn btn-primary btn-sm" href="/insights">Open Insights <ArrowRight className="inline size-4 -mt-0.5" /></Link>
+          <Link className="btn btn-ghost btn-sm" href="/insights/interventions">Interventions <ArrowRight className="inline size-4 -mt-0.5" /></Link>
         </div>
       </div>
 
@@ -481,20 +488,20 @@ export default function Campaign() {
                 <span className="numchip sm">1</span><h2 style={{ margin: 0, fontSize: 16.5 }}>Campaign details</h2>
               </div>
               <label className="f">Campaign name</label>
-              <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} />
+              <Input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} />
               <div className="grid2" style={{ marginTop: 4 }}>
                 <div>
                   <label className="f">Closes on</label>
-                  <input type="date" value={editCloses} onChange={(e) => setEditCloses(e.target.value)} />
+                  <Input type="date" value={editCloses} onChange={(e) => setEditCloses(e.target.value)} />
                 </div>
                 <div>
                   <label className="f">Campaign status</label>
-                  <select value={editStatus} onChange={(e) => setEditStatus(e.target.value)}>
-                    <option value="draft">Draft</option>
-                    <option value="open">Open</option>
-                    <option value="closed">Closed</option>
-                    <option value="archived">Archived</option>
-                  </select>
+                  <NativeSelect value={editStatus} onChange={(e) => setEditStatus(e.target.value)}>
+                    <NativeSelectOption value="draft">Draft</NativeSelectOption>
+                    <NativeSelectOption value="open">Open</NativeSelectOption>
+                    <NativeSelectOption value="closed">Closed</NativeSelectOption>
+                    <NativeSelectOption value="archived">Archived</NativeSelectOption>
+                  </NativeSelect>
                   <p className="small muted" style={{ margin: "5px 0 0" }}>
                     {editStatus === "open" ? "Responses are currently being accepted."
                       : editStatus === "draft" ? "Nothing is collected until you open the campaign."
@@ -515,13 +522,13 @@ export default function Campaign() {
                   <div style={{ display: "flex", alignItems: "stretch", maxWidth: 200 }}>
                     <button type="button" className="btn btn-ghost" style={{ borderRadius: "10px 0 0 10px", padding: "0 16px" }}
                       onClick={() => setEditThreshold(String(Math.max(4, Number(editThreshold || 5) - 1)))}>−</button>
-                    <input type="text" inputMode="numeric" value={editThreshold} style={{ borderRadius: 0, textAlign: "center" }}
+                    <Input type="text" inputMode="numeric" value={editThreshold} style={{ borderRadius: 0, textAlign: "center" }}
                       onChange={(e) => setEditThreshold(e.target.value.replace(/\D/g, ""))} />
                     <button type="button" className="btn btn-ghost" style={{ borderRadius: "0 10px 10px 0", padding: "0 16px" }}
                       onClick={() => setEditThreshold(String(Number(editThreshold || 5) + 1))}>+</button>
                   </div>
                   <p className="small muted" style={{ margin: "6px 0 0" }}>
-                    🛡 Results for a group or segment appear only after {Math.max(4, Number(editThreshold || 5))} responses. Minimum 4.
+                    <ShieldCheck className="inline size-4 -mt-0.5" /> Results for a group or segment appear only after {Math.max(4, Number(editThreshold || 5))} responses. Minimum 4.
                   </p>
                 </div>
                 <div>
@@ -538,10 +545,10 @@ export default function Campaign() {
                     {segNew === null ? (
                       <button type="button" onClick={() => setSegNew("")}
                         style={{ border: "1.5px dashed var(--primary)", color: "var(--primary)", background: "none", borderRadius: 9, padding: "5px 12px", fontWeight: 600, cursor: "pointer", fontSize: 12.5 }}>
-                        ＋ Add segment
+                        <Plus className="inline size-4 -mt-0.5" /> Add segment
                       </button>
                     ) : (
-                      <input type="text" autoFocus value={segNew} onChange={(e) => setSegNew(e.target.value)} placeholder="Segment name"
+                      <Input type="text" autoFocus value={segNew} onChange={(e) => setSegNew(e.target.value)} placeholder="Segment name"
                         style={{ width: 160, padding: "5px 10px", fontSize: 13 }}
                         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); const v = segNew.trim(); if (v && !segList.includes(v)) setSegList((l) => [...l, v]); setSegNew(null); } if (e.key === "Escape") setSegNew(null); }}
                         onBlur={() => { const v = (segNew || "").trim(); if (v && !segList.includes(v)) setSegList((l) => [...l, v]); setSegNew(null); }} />
@@ -565,7 +572,7 @@ export default function Campaign() {
                         <span className="small"><b>{d.label}</b></span>
                       </label>
                       {d.custom && demoOn[d.id] ? (
-                        <input type="text" value={demoCustom[d.id] || ""}
+                        <Input type="text" value={demoCustom[d.id] || ""}
                           onChange={(e) => setDemoCustom((s) => ({ ...s, [d.id]: e.target.value }))}
                           placeholder={d.id === "language" ? "Empty = standard list" : (d.placeholder || "Comma-separated options")}
                           style={{ margin: "2px 0 6px 24px", width: "calc(100% - 24px)", padding: "5px 10px", fontSize: 12.5 }} />
@@ -582,14 +589,14 @@ export default function Campaign() {
               </div>
               <div className="grid2">
                 <div>
-                  <label className="f">Thank-you message <span className="pill closed" style={{ textTransform: "none", marginLeft: 6 }}>Optional</span></label>
-                  <textarea maxLength={300} value={editThanks} onChange={(e) => setEditThanks(e.target.value)}
+                  <label className="f">Thank-you message <Badge variant="outline" data-tone="closed" style={{ textTransform: "none", marginLeft: 6 }}>Optional</Badge></label>
+                  <Textarea maxLength={300} value={editThanks} onChange={(e) => setEditThanks(e.target.value)}
                     placeholder="Default: Your responses have been recorded anonymously." />
                   <p className="small muted" style={{ margin: "4px 0 0" }}>{editThanks.length} / 300</p>
                 </div>
                 <div>
-                  <label className="f">Closed campaign message <span className="pill closed" style={{ textTransform: "none", marginLeft: 6 }}>Optional</span></label>
-                  <textarea maxLength={300} value={editClosedMsg} onChange={(e) => setEditClosedMsg(e.target.value)}
+                  <label className="f">Closed campaign message <Badge variant="outline" data-tone="closed" style={{ textTransform: "none", marginLeft: 6 }}>Optional</Badge></label>
+                  <Textarea maxLength={300} value={editClosedMsg} onChange={(e) => setEditClosedMsg(e.target.value)}
                     placeholder="Default: This assessment is not currently open." />
                   <p className="small muted" style={{ margin: "4px 0 0" }}>{editClosedMsg.length} / 300</p>
                 </div>
@@ -597,10 +604,10 @@ export default function Campaign() {
             </div>
 
             <div style={{ background: "#fbf7ef", borderTop: "1px solid var(--line)", padding: "14px 26px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-              <span className="small muted">Changes affect this campaign only.{saved ? <span style={{ color: "var(--green, #2f855a)", marginLeft: 10, fontWeight: 600 }}>Saved ✓</span> : null}</span>
+              <span className="small muted">Changes affect this campaign only.{saved ? <span style={{ color: "var(--green, #2f855a)", marginLeft: 10, fontWeight: 600 }}>Saved <Check className="inline size-4 -mt-0.5" /></span> : null}</span>
               <span style={{ display: "flex", gap: 10 }}>
                 <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => load()}>Cancel</button>
-                <button className="btn btn-primary" disabled={busy}>{busy ? "Saving…" : "Save changes"}</button>
+                <Button disabled={busy}>{busy ? "Saving…" : "Save changes"}</Button>
               </span>
             </div>
           </form>
@@ -637,33 +644,33 @@ function GapsCard({ results }) {
         The widest gap between any two groups on each pillar, measured only on the
         questions both groups answered — so it reflects perception, not questionnaire design.
       </p>
-      <table className="t">
-        <thead><tr><th>Pillar</th><th>Widest gap</th><th>Shared Qs</th><th>Spread</th></tr></thead>
-        <tbody>
+      <Table>
+        <TableHeader><TableRow><TableHead>Pillar</TableHead><TableHead>Widest gap</TableHead><TableHead>Shared Qs</TableHead><TableHead>Spread</TableHead></TableRow></TableHeader>
+        <TableBody>
           {rows.map(({ p, e }) => (
-            <tr key={p.id} style={e && e.d === maxSpread && e.d >= 15 ? { background: "#fff8ef" } : undefined}>
-              <td><b>{p.short}</b></td>
-              <td>
+            <TableRow key={p.id} style={e && e.d === maxSpread && e.d >= 15 ? { background: "#fff8ef" } : undefined}>
+              <TableCell><b>{p.short}</b></TableCell>
+              <TableCell>
                 {e ? (
                   <>
-                    <span className="pill closed" style={{ marginRight: 6 }}>{nameOfType(e.hiType)}: <b>{e.hi}</b></span>
-                    <span className="pill closed">{nameOfType(e.loType)}: <b>{e.lo}</b></span>
+                    <Badge variant="outline" data-tone="closed" style={{ marginRight: 6 }}>{nameOfType(e.hiType)}: <b>{e.hi}</b></Badge>
+                    <Badge variant="outline" data-tone="closed">{nameOfType(e.loType)}: <b>{e.lo}</b></Badge>
                   </>
                 ) : <span className="small muted">not enough shared questions</span>}
-              </td>
-              <td className="small muted">{e ? e.items : "—"}</td>
-              <td className="score">
+              </TableCell>
+              <TableCell className="small muted">{e ? e.items : "—"}</TableCell>
+              <TableCell className="score">
                 {!e ? "—" : (
                   <>
                     {e.d}
                     {e.d >= 20 ? <span className="small" style={{ color: "var(--band-low)" }}> ▲ {nameOfType(e.hiType)} vs {nameOfType(e.loType)}</span> : null}
                   </>
                 )}
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
       {smallGroups.length ? (
         <p className="small muted" style={{ marginTop: 8 }}>
           ⚠ Small samples ({smallGroups.map((g) => `${groupName(g)} n=${g.n}`).join(", ")}) — treat
