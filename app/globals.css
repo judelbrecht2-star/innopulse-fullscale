@@ -423,18 +423,40 @@ table.t tr:last-child td{border-bottom:none}
   .main{padding:0!important;max-width:none!important}
 }
 
-/* ---- Badge tones: keep the stakeholder / status colour semantics on shadcn Badge ---- */
-@layer components {
-  [data-slot="badge"][data-tone="open"]   { background: var(--tgs-green-soft); color: var(--tgs-green); border-color: transparent; }
-  [data-slot="badge"][data-tone="draft"]  { background: var(--tgs-amber-soft); color: #9a6410; border-color: transparent; }
-  [data-slot="badge"][data-tone="closed"] { background: var(--tgs-grey-soft); color: var(--muted-foreground); border-color: transparent; }
-  [data-slot="badge"][data-tone="teal"]   { background: var(--tgs-teal-soft); color: var(--band-med); border-color: transparent; }
-  [data-slot="badge"][data-tone="violet"] { background: var(--tgs-violet-soft); color: var(--tgs-violet); border-color: transparent; }
+
+
+/* ==========================================================================
+   Overrides for shadcn components.
+   These are deliberately UNLAYERED and last in the file: the legacy stylesheet
+   above is also unlayered, and unlayered CSS always wins over @layer rules —
+   which is why earlier fixes placed in @layer components had no effect.
+   ========================================================================== */
+
+/* Sidebar: nav links must use the sidebar palette, not the global coral link colour */
+[data-slot="sidebar"] a,
+[data-slot="sidebar"] a:hover,
+[data-sidebar="menu-button"],
+[data-slot="sidebar-menu-button"] { color: inherit; }
+[data-slot="sidebar"] { color: var(--sidebar-foreground); }
+[data-slot="sidebar"] [data-active="true"] { color: var(--sidebar-accent-foreground); }
+
+/* Native select: leave room for the chevron shadcn draws in the wrapper.
+   The legacy `select { padding: … }` rule was squashing it onto the text. */
+[data-slot="native-select"] {
+  padding-right: 2rem;
+  padding-left: 0.75rem;
+  appearance: none;
+  background-image: none;
+  text-overflow: ellipsis;
 }
 
-/* Sidebar links must not inherit the global coral link colour */
-@layer components {
-  [data-slot="sidebar"] a,
-  [data-slot="sidebar-menu-button"] { color: inherit; }
-  [data-slot="sidebar"] a:hover { color: inherit; }
-}
+/* Badge tones: keep the stakeholder / status colour semantics on shadcn Badge */
+[data-slot="badge"][data-tone="open"]   { background: var(--tgs-green-soft); color: var(--tgs-green); border-color: transparent; }
+[data-slot="badge"][data-tone="draft"]  { background: var(--tgs-amber-soft); color: #9a6410; border-color: transparent; }
+[data-slot="badge"][data-tone="closed"] { background: var(--tgs-grey-soft); color: var(--muted-foreground); border-color: transparent; }
+[data-slot="badge"][data-tone="teal"]   { background: var(--tgs-teal-soft); color: var(--band-med); border-color: transparent; }
+[data-slot="badge"][data-tone="violet"] { background: var(--tgs-violet-soft); color: var(--tgs-violet); border-color: transparent; }
+
+/* Buttons/badges shouldn't inherit the global coral <a> colour when used as links */
+[data-slot="button"] { color: inherit; }
+[data-slot="button"][data-variant="default"] { color: var(--primary-foreground); }
