@@ -543,10 +543,15 @@ table.t tr:last-child td{border-bottom:none}
 
 .cmp-stats { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 12px; margin-bottom: 16px; }
-.cmp-stat { display: flex; align-items: center; gap: 12px; background: var(--card);
-  border: 1px solid var(--border); border-radius: 12px; padding: 14px 14px; }
-.cmp-stat-k { font-size: 12.5px; color: var(--muted-foreground); line-height: 1.3; }
-.cmp-stat-v { font-size: 24px; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.cmp-stat { display: flex; align-items: flex-start; gap: 12px; background: var(--card);
+  border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+/* Reserve two lines for the label so every number sits on the same baseline,
+   whether the label wraps ("Active campaigns") or not ("Drafts"). */
+.cmp-stat > div { display: flex; flex-direction: column; min-width: 0; }
+.cmp-stat-k { font-size: 12.5px; color: var(--muted-foreground); line-height: 1.3;
+  min-height: calc(1.3em * 2); }
+.cmp-stat-v { font-size: 24px; font-weight: 700; line-height: 1.15; margin-top: 2px;
+  font-variant-numeric: tabular-nums; }
 .cmp-tile { width: 40px; height: 40px; border-radius: 11px; flex: 0 0 40px;
   display: flex; align-items: center; justify-content: center; }
 .cmp-green { background: var(--tgs-green-soft); color: var(--tgs-green); }
@@ -563,8 +568,11 @@ table.t tr:last-child td{border-bottom:none}
 .cmp-search svg { position: absolute; left: 12px; color: var(--muted-foreground); pointer-events: none; }
 .cmp-search [data-slot="input"] { padding-left: 38px; width: 100%; }
 
+/* NB: no `overflow: hidden` here — it clipped the row action menu. The warning
+   banner keeps its full-bleed look via its own bottom radius instead. */
 .cmp-row { background: var(--card); border: 1px solid var(--border); border-radius: 12px;
-  padding: 16px 18px 0; margin-bottom: 14px; overflow: hidden; }
+  padding: 16px 18px 0; margin-bottom: 14px; position: relative; }
+.cmp-row:has(.cmp-menu[open]) { z-index: 40; }
 .cmp-row-top { display: flex; justify-content: space-between; gap: 14px; flex-wrap: wrap; align-items: flex-start; }
 .cmp-row-id { min-width: 240px; flex: 1; }
 .cmp-title-line { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
@@ -596,8 +604,26 @@ table.t tr:last-child td{border-bottom:none}
 
 .cmp-warn { display: flex; align-items: center; gap: 10px; margin: 0 -18px;
   padding: 11px 18px; background: #fdf6e6; border-top: 1px solid #f2e2bd;
+  border-radius: 0 0 11px 11px;
   color: #9a6410; font-size: 13.5px; font-weight: 600; }
 
 @media (max-width: 1200px) { .cmp-stats { grid-template-columns: repeat(3, minmax(0,1fr)); } }
 @media (max-width: 760px)  { .cmp-stats { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .cmp-m { border-left: 0; padding: 0 14px 0 0; } }
+
+/* Row action menu: anchor it, float it above neighbouring cards, and let it
+   size to its content instead of being clipped. */
+.cmp-menu { position: relative; }
+.cmp-menu > .dd {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 60;
+  min-width: 210px; max-height: none; overflow: visible;
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(20,20,25,.14); padding: 6px;
+}
+.cmp-menu > .dd button {
+  display: block; width: 100%; text-align: left; background: none; border: 0;
+  padding: 9px 12px; border-radius: 7px; font: inherit; font-size: 14px;
+  color: var(--foreground); cursor: pointer;
+}
+.cmp-menu > .dd button:hover:not(:disabled) { background: var(--muted); }
+.cmp-menu > .dd button:disabled { opacity: .45; cursor: not-allowed; }

@@ -63,7 +63,7 @@ export default function Account() {
       const { data } = await sb().auth.getUser();
       if (!data.user) { router.replace("/login"); return; }
       setUser(data.user);
-      const mem = await activeMembership(u.user.id); // P0-3
+      const mem = await activeMembership(data.user.id); // P0-3 (was `u.user.id` — u is not in scope here)
       if (mem) {
         setOrg(mem.fs_orgs); setRole(mem.role);
         if (mem.role === "owner" || mem.role === "manager") loadTeam(mem.org_id);
