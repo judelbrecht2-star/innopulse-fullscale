@@ -466,21 +466,21 @@ table.t tr:last-child td{border-bottom:none}
    ========================================================================== */
 .ovw-card { padding: 0; overflow: hidden; border-radius: 14px; }
 .ovw-head { display: flex; justify-content: space-between; align-items: flex-start;
-  gap: 20px; flex-wrap: wrap; padding: 22px 26px 6px; }
+  gap: 16px; flex-wrap: wrap; padding: 18px 22px 2px; }
 .ovw-title { font-family: var(--font-display), Georgia, serif; font-size: 24px;
   font-weight: 600; line-height: 1.25; margin: 0; color: var(--foreground); }
-.ovw-source { font-size: 13px; line-height: 1.5; color: var(--muted-foreground); margin: 8px 0 0; max-width: 62ch; }
+.ovw-source { font-size: 13px; line-height: 1.45; color: var(--muted-foreground); margin: 5px 0 0; max-width: 74ch; }
 .ovw-inline-link { color: var(--tgs-teal); font-weight: 600; }
 .ovw-head-right { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .ovw-campaign { font-size: 13px; color: var(--muted-foreground); }
 .ovw-btn { color: var(--tgs-teal); border-color: color-mix(in srgb, var(--tgs-teal) 40%, white); }
 .ovw-btn:hover { background: var(--tgs-teal-soft); }
-.ovw-body { padding: 14px 26px 20px; }
-.ovw-top { display: flex; gap: 34px; align-items: center; flex-wrap: wrap; }
+.ovw-body { padding: 8px 22px 14px; }
+.ovw-top { display: flex; gap: 22px; align-items: center; flex-wrap: wrap; }
 
 .ovw-rows { flex: 1; min-width: 320px; margin: 0; display: grid; gap: 0; }
-.ovw-row { display: grid; grid-template-columns: 210px 1fr; align-items: center;
-  gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+.ovw-row { display: grid; grid-template-columns: 190px 1fr; align-items: center;
+  gap: 14px; padding: 9px 0; border-bottom: 1px solid var(--border); }
 .ovw-row:last-child { border-bottom: 0; }
 .ovw-row dt { font-size: 14px; color: var(--muted-foreground); margin: 0; }
 .ovw-row dd { margin: 0; font-size: 15px; color: var(--foreground); }
@@ -489,25 +489,25 @@ table.t tr:last-child td{border-bottom:none}
 .ovw-meta { font-size: 13px; color: var(--muted-foreground); }
 
 .ovw-split { display: grid; grid-template-columns: 1fr 1.35fr; border-top: 1px solid var(--border); }
-.ovw-pane { padding: 20px 26px 24px; }
+.ovw-pane { padding: 16px 22px 18px; }
 .ovw-pane-right { border-left: 1px solid var(--border); }
 .ovw-h3 { font-family: var(--font-display), Georgia, serif; font-size: 18px; font-weight: 600;
-  margin: 0 0 14px; color: var(--foreground); letter-spacing: -0.01em; }
+  margin: 0 0 10px; color: var(--foreground); letter-spacing: -0.01em; }
 
-.ovw-cov { margin-bottom: 13px; }
-.ovw-cov-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.ovw-cov { margin-bottom: 9px; }
+.ovw-cov-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
 .ovw-cov-name { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
 .ovw-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
 .ovw-cov-num { font-size: 13px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
 .ovw-track { height: 8px; background: #e9e9ee; border-radius: 99px; overflow: hidden; }
 .ovw-fill { height: 100%; border-radius: 99px; }
 
-.ovw-pri { display: grid; grid-template-columns: 28px 1fr; gap: 12px; align-items: start;
-  border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+.ovw-pri { display: grid; grid-template-columns: 26px 1fr; gap: 11px; align-items: start;
+  border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
 .ovw-num { width: 24px; height: 24px; border-radius: 50%; background: var(--tgs-teal);
   color: #fff; font-size: 12.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
-.ovw-pri-label { font-size: 14px; line-height: 1.45; color: var(--foreground); }
-.ovw-chip { margin-top: 7px; }
+.ovw-pri-label { font-size: 13.5px; line-height: 1.4; color: var(--foreground); }
+.ovw-chip { margin-top: 5px; }
 
 @media (max-width: 900px) {
   .ovw-split { grid-template-columns: 1fr; }
@@ -518,3 +518,7 @@ table.t tr:last-child td{border-bottom:none}
 /* Page lead: "Manage campaigns" as the outlined teal action from the design */
 .ovw-lead { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .ovw-lead-btn { margin-left: 4px; font-weight: 600; }
+
+/* Panes align to the top so a short coverage list doesn't leave dead space */
+.ovw-split { align-items: start; }
+.ovw-pane { align-self: start; }

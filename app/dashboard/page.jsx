@@ -79,16 +79,19 @@ export default function Dashboard() {
 }
 
 function Donut({ value }) {
-  const r = 52, c = 2 * Math.PI * r;
+  // Ring sits clear of the numerals: inner radius (r - stroke/2) is comfortably
+  // wider than the score text at this font size.
+  const r = 66, c = 2 * Math.PI * r;
   const pct = Math.max(0, Math.min(100, value ?? 0));
   const col = pct < 40 ? "var(--band-low)" : pct < 70 ? "var(--band-med)" : "var(--band-high)";
   return (
-    <svg viewBox="0 0 130 130" style={{ width: 132, height: 132 }} role="img" aria-label={`Overall score ${value}`}>
-      <circle cx="65" cy="65" r={r} fill="none" stroke="#e8e8ec" strokeWidth="12" />
-      <circle cx="65" cy="65" r={r} fill="none" stroke={col} strokeWidth="12" strokeLinecap="round"
-        strokeDasharray={`${(pct / 100) * c} ${c}`} transform="rotate(-90 65 65)" />
-      <text x="65" y="62" textAnchor="middle" fontSize="30" fontWeight="800" fill="#17171a">{value ?? "—"}</text>
-      <text x="65" y="82" textAnchor="middle" fontSize="11" fontWeight="700" letterSpacing="1" fill="#6d6d76">
+    <svg viewBox="0 0 160 160" style={{ width: 158, height: 158, flex: "0 0 auto" }} role="img" aria-label={`Overall score ${value}`}>
+      <circle cx="80" cy="80" r={r} fill="none" stroke="#e8e8ec" strokeWidth="13" />
+      <circle cx="80" cy="80" r={r} fill="none" stroke={col} strokeWidth="13" strokeLinecap="round"
+        strokeDasharray={`${(pct / 100) * c} ${c}`} transform="rotate(-90 80 80)" />
+      <text x="80" y="79" textAnchor="middle" fontSize="34" fontWeight="800" fill="#17171a"
+        style={{ fontVariantNumeric: "tabular-nums" }}>{value ?? "—"}</text>
+      <text x="80" y="100" textAnchor="middle" fontSize="11" fontWeight="700" letterSpacing="1.2" fill="#6d6d76">
         {value != null ? bandWord(value).toUpperCase() : ""}
       </text>
     </svg>
