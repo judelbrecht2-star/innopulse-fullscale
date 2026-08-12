@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { ArrowRight, WarningTriangle } from "iconoir-react";
+import { ArrowRight, WarningTriangle, Rocket, Page, Group, ReportColumns, InfoCircle, WarningCircle, Search, Plus, SendMail } from "iconoir-react";
 import { activeMembership } from "../lib/org";
 
 function randToken() {
@@ -140,34 +140,53 @@ export default function Campaigns() {
     return <Badge variant="secondary" data-tone="open">Open</Badge>;
   };
 
+  const STAT = [
+    { k: "Active campaigns",    v: open,      Icon: Rocket,        tone: "green" },
+    { k: "Drafts",              v: drafts,    Icon: Page,          tone: "grey"  },
+    { k: "Responses collected", v: totalResp, Icon: Group,         tone: "teal"  },
+    { k: "Average completion",  v: avgPct + "%", Icon: ReportColumns, tone: "amber" },
+    { k: "Closing soon",        v: closingSoon, Icon: InfoCircle,  tone: "blue"  },
+    { k: "Needs attention",     v: attention, Icon: WarningCircle, tone: "red"   },
+  ];
+
   return (
     <Shell active="campaigns" user={user}>
-      <div className="crumbs"><b>Campaigns</b></div>
-      <div className="pagehead">
+      <div className="crumbs cmp-crumb">Campaigns</div>
+      <div className="cmp-head">
         <div>
-          <h1>Campaigns</h1>
-          <p className="lead">Each campaign collects one assessment cycle across your stakeholder groups.</p>
+          <h1 className="cmp-h1">Campaigns</h1>
+          <p className="cmp-sub">Each campaign collects one assessment cycle across your stakeholder groups.</p>
         </div>
-        {canManage ? <Link className="btn btn-primary" href="/campaigns/new"><I.plus style={{ width: 16, height: 16, stroke: "#fff" }} /> New campaign</Link> : null}
+        {canManage ? (
+          <Button asChild className="cmp-primary">
+            <Link href="/campaigns/new"><Plus width={18} height={18} /> New campaign</Link>
+          </Button>
+        ) : null}
       </div>
       {err ? <div className="err">{err}</div> : null}
 
-      <div className="stats">
-        <div className="stat"><span className="ic c-green"><I.rocket /></span><div><div className="k">Active campaigns</div><div className="v">{open}</div></div></div>
-        <div className="stat"><span className="ic c-grey"><I.doc /></span><div><div className="k">Drafts</div><div className="v">{drafts}</div></div></div>
-        <div className="stat"><span className="ic c-teal"><I.people /></span><div><div className="k">Responses collected</div><div className="v">{totalResp}</div></div></div>
-        <div className="stat"><span className="ic c-amber"><I.pie /></span><div><div className="k">Avg completion</div><div className="v">{avgPct}%</div></div></div>
-        <div className="stat"><span className="ic c-blue"><I.info /></span><div><div className="k">Closing soon</div><div className="v">{closingSoon}</div></div></div>
-        <div className="stat"><span className="ic c-red"><I.info /></span><div><div className="k">Needing attention</div><div className="v">{attention}</div></div></div>
+      <div className="cmp-stats">
+        {STAT.map((st) => (
+          <div className="cmp-stat" key={st.k}>
+            <span className={"cmp-tile cmp-" + st.tone}><st.Icon width={20} height={20} /></span>
+            <div>
+              <div className="cmp-stat-k">{st.k}</div>
+              <div className="cmp-stat-v">{st.v}</div>
+            </div>
+          </div>
+        ))}
       </div>
 
-      <div className="card" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <Input type="text" placeholder="Search campaigns" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
-        <NativeSelect value={fStatus} onChange={(e) => setFStatus(e.target.value)} style={{ width: "auto" }}>
+      <div className="cmp-toolbar">
+        <span className="cmp-search">
+          <Search width={18} height={18} />
+          <Input type="text" placeholder="Search campaigns" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search campaigns" />
+        </span>
+        <NativeSelect value={fStatus} onChange={(e) => setFStatus(e.target.value)} aria-label="Filter by status">
           <NativeSelectOption value="active">All except archived</NativeSelectOption><NativeSelectOption value="open">Open</NativeSelectOption>
           <NativeSelectOption value="draft">Draft</NativeSelectOption><NativeSelectOption value="closed">Closed</NativeSelectOption><NativeSelectOption value="archived">Archived</NativeSelectOption>
         </NativeSelect>
-        <NativeSelect value={sort} onChange={(e) => setSort(e.target.value)} style={{ width: "auto" }}>
+        <NativeSelect value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sort campaigns">
           <NativeSelectOption value="newest">Newest first</NativeSelectOption><NativeSelectOption value="closing">Closing soon</NativeSelectOption><NativeSelectOption value="activity">Recent activity</NativeSelectOption>
         </NativeSelect>
       </div>
@@ -175,24 +194,26 @@ export default function Campaigns() {
       {!filtered.length ? (
         <div className="card"><p className="muted">No campaigns match. {canManage ? <Link href="/campaigns/new">Create one <ArrowRight className="inline size-4 -mt-0.5" /></Link> : null}</p></div>
       ) : filtered.map(({ c, s }) => (
-        <div className="card" key={c.id}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
-            <div style={{ minWidth: 240, flex: 1 }}>
-              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                <Link href={`/campaigns/${c.id}`} style={{ fontWeight: 800, fontSize: 17 }}>{c.name}</Link>
+        <div className="cmp-row" key={c.id}>
+          <div className="cmp-row-top">
+            <div className="cmp-row-id">
+              <div className="cmp-title-line">
+                <Link href={`/campaigns/${c.id}`} className="cmp-name">{c.name}</Link>
                 {stChip(c, s)}
               </div>
-              <p className="small muted" style={{ margin: "4px 0 0" }}>
+              <p className="cmp-meta">
                 InnoPulse v{(vers[c.questionnaire_version_id] || "?").replace("-draft", " (draft)")}
                 {c.created_by === user?.id ? " · Owner: you" : ""}
                 {" · privacy threshold "}{c.anonymity_threshold}
               </p>
             </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <Link className="btn btn-primary btn-sm" href={`/campaigns/${c.id}`}>View campaign</Link>
-              <Button variant="ghost" size="sm" disabled title="Email reminders arrive with the notifications build">✈ Send reminders</Button>
-              <details className="rowmenu">
-                <summary className="iconbtn" style={{ fontWeight: 800 }}>⋯</summary>
+            <div className="cmp-actions">
+              <Button asChild size="sm" className="cmp-primary"><Link href={`/campaigns/${c.id}`}>View campaign</Link></Button>
+              <Button variant="ghost" size="sm" disabled title="Email reminders arrive with the notifications build">
+                <SendMail width={16} height={16} /> Send reminders
+              </Button>
+              <details className="rowmenu cmp-menu">
+                <summary className="cmp-dots" aria-label="More actions">···</summary>
                 <div className="dd">
                   <button onClick={() => router.push(`/campaigns/${c.id}`)}>Manage links</button>
                   <button onClick={() => router.push("/responses")}>View responses</button>
@@ -213,27 +234,33 @@ export default function Campaigns() {
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 22, flexWrap: "wrap", alignItems: "center", margin: "12px 0 0" }}>
-            <span className="small"><b>{s.n} / {s.target || "—"}</b> responses</span>
-            <span style={{ display: "inline-block", width: 130, height: 7, background: "#e8e8ec", borderRadius: 99, overflow: "hidden" }}>
-              <i style={{ display: "block", height: "100%", width: Math.min(100, s.pct) + "%", background: s.pct < 50 ? "var(--amber, #b7791f)" : "var(--teal)", borderRadius: 99 }} />
+          <div className="cmp-metrics">
+            <span className="cmp-m">
+              <b>{s.n} / {s.target || "—"}</b> responses
+              <span className="cmp-track"><i style={{ width: Math.min(100, s.pct) + "%", background: s.pct < 50 ? "var(--tgs-amber)" : "var(--tgs-teal)" }} /></span>
             </span>
-            <span className="small">{s.pct}% complete</span>
-            <span className="small">{s.covered} / {s.gs.length} group{s.gs.length === 1 ? "" : "s"} past threshold</span>
-            <span className="small" style={{ display: "inline-flex", gap: 4 }}>
+            <span className="cmp-m cmp-stack"><b>{s.pct}%</b><small>complete</small></span>
+            <span className="cmp-m cmp-stack"><b>{s.covered} / {s.gs.length}</b><small>groups past threshold</small></span>
+            <span className="cmp-m cmp-chips">
               {s.gs.slice(0, 6).map((g) => (
-                <span key={g.id} className={"chip " + (GROUP_META[g.type]?.chip || "c-grey")} title={groupName(g)}
-                  style={{ width: 22, height: 22, fontSize: 10, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "50%" }}>
+                <span key={g.id} className={"cmp-gchip " + (GROUP_META[g.type]?.chip || "c-grey")} title={groupName(g)}>
                   {groupName(g).slice(0, 1)}
                 </span>
               ))}
             </span>
-            {s.daysLeft != null && c.status === "open" ? <span className="small muted">{s.daysLeft >= 0 ? `${s.daysLeft} days left` : "window ended"}</span> : null}
-            <span className="small muted">{s.last ? `last response ${ago(s.last)}` : "no responses yet"}</span>
+            {s.daysLeft != null && c.status === "open" ? (
+              <span className="cmp-m"><b>{s.daysLeft >= 0 ? s.daysLeft : 0}</b> days left</span>
+            ) : null}
+            <span className="cmp-m cmp-stack cmp-last">
+              <small>Last response</small><span>{s.last ? ago(s.last) : "—"}</span>
+            </span>
           </div>
 
           {s.warns.length ? (
-            <p className="small" style={{ margin: "10px 0 0", color: "var(--amber, #b7791f)" }}><WarningTriangle className="inline size-4 -mt-0.5" /> {s.warns.join(" · ")}</p>
+            <div className="cmp-warn">
+              <WarningTriangle width={17} height={17} />
+              <span>{s.warns.join(" · ")}</span>
+            </div>
           ) : null}
         </div>
       ))}
