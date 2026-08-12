@@ -7,8 +7,10 @@ import { Shell, bandCls, bandWord, bandOf, GROUP_META, GROUP_BAR, groupName } fr
 import { bestGaps } from "../lib/gaps";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ArrowRight } from "iconoir-react";
+import { ArrowRight, GraphUp, Group, ShieldCheck, WarningTriangle } from "iconoir-react";
 import { activeMembership } from "../lib/org";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
 const BARRIER = { sii: "Confusion", iem: "Resistance", oic: "Anxiety", ipm: "Frustration", roi: "False Starts" };
 
@@ -132,87 +134,114 @@ function ExecOverview({ data }) {
     }
   }
 
+  const ROW_ICON = {
+    strong: { Icon: GraphUp, tone: "green" },
+    weak:   { Icon: WarningTriangle, tone: "red" },
+    resp:   { Icon: Group, tone: "blue" },
+    conf:   { Icon: ShieldCheck, tone: "blue" },
+  };
+  const Tile = ({ k }) => {
+    const { Icon, tone } = ROW_ICON[k];
+    return <span className={"ovw-tile ovw-" + tone}><Icon width={18} height={18} /></span>;
+  };
+
   return (
-    <div className="card">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
-        <h2 style={{ margin: 0 }}>Executive overview</h2>
-        <span className="small muted">{campaign.name} · <Link href={`/campaigns/${campaign.id}`}>full detail →</Link></span>
-      </div>
-      <p className="small muted" style={{ margin: "4px 0 0" }}>
-        Data source: <b>{campaign.name}</b> only — the {campaign.status === "open" ? "currently open" : "most recent"} campaign,
-        never an average across campaigns. Earlier cycles appear as the trend comparison on{" "}
-        <Link href="/insights" style={{ color: "inherit", fontWeight: 600 }}>Insights</Link>, not in these numbers.
-      </p>
-
-      {!overall ? (
-        <p className="muted" style={{ marginTop: 10 }}>
-          Waiting for enough responses — results appear once groups pass the anonymity
-          threshold of {results.campaign.anonymity_threshold}.
-        </p>
-      ) : (
-        <div style={{ display: "flex", gap: 26, flexWrap: "wrap", alignItems: "center", marginTop: 10 }}>
-          <Donut value={overall.score} />
-          <div style={{ flex: 1, minWidth: 260 }}>
-            <Table>
-              <TableBody>
-                <TableRow>
-                  <TableCell className="small muted" style={{ width: 170 }}>Strongest capability</TableCell>
-                  <TableCell><b>{strongest ? strongest.p.name : "—"}</b> {strongest ? <span className={"score " + bandCls(strongest.v)}>{strongest.v}</span> : null}</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="small muted">Biggest constraint</TableCell>
-                  <TableCell>
-                    <b>{weakest ? weakest.p.name : "—"}</b> {weakest ? <span className={"score " + bandCls(weakest.v)}>{weakest.v}</span> : null}
-                    {weakest ? <span className="small muted"> · shows up as {BARRIER[weakest.p.id]}</span> : null}
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="small muted">Responses</TableCell>
-                  <TableCell><b>{totalN}</b>{totalTarget ? <span className="small muted"> of {totalTarget} targeted ({coverage}%)</span> : null}</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="small muted">Confidence</TableCell>
-                  <TableCell>
-                    {confidence ? <span className={"pill " + (confidence === "High" ? "open" : confidence === "Medium" ? "draft" : "closed")}>{confidence}</span> : "—"}
-                    <span className="small muted"> coverage {coverage ?? "—"}% · don&apos;t-know {dknaAvg ?? "—"}%</span>
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </div>
-        </div>
-      )}
-
-      <div className="grid2" style={{ marginTop: 14 }}>
+    <Card className="ovw-card">
+      <CardHeader className="ovw-head">
         <div>
-          <div className="small" style={{ fontWeight: 800, letterSpacing: ".6px", textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>Response coverage</div>
+          <CardTitle className="ovw-title">Executive overview</CardTitle>
+          <p className="ovw-source">
+            Data source: <b>{campaign.name}</b> only — the {campaign.status === "open" ? "currently open" : "most recent"} campaign,
+            never an average across campaigns.<br />Earlier cycles appear as the trend comparison on{" "}
+            <Link href="/insights" className="ovw-inline-link">Insights</Link>, not in these numbers.
+          </p>
+        </div>
+        <div className="ovw-head-right">
+          <span className="ovw-campaign">{campaign.name}</span>
+          <Button asChild variant="outline" size="sm" className="ovw-btn">
+            <Link href={`/campaigns/${campaign.id}`}>View full campaign <ArrowRight width={16} height={16} /></Link>
+          </Button>
+        </div>
+      </CardHeader>
+
+      <CardContent className="ovw-body">
+        {!overall ? (
+          <p className="muted">
+            Waiting for enough responses — results appear once groups pass the anonymity
+            threshold of {results.campaign.anonymity_threshold}.
+          </p>
+        ) : (
+          <div className="ovw-top">
+            <Donut value={overall.score} />
+            <dl className="ovw-rows">
+              <div className="ovw-row">
+                <Tile k="strong" />
+                <dt>Strongest capability</dt>
+                <dd><b>{strongest ? strongest.p.name : "—"}</b>{strongest ? <span className="ovw-score">{strongest.v}</span> : null}</dd>
+              </div>
+              <div className="ovw-row">
+                <Tile k="weak" />
+                <dt>Biggest constraint</dt>
+                <dd>
+                  <b>{weakest ? weakest.p.name : "—"}</b>{weakest ? <span className="ovw-score">{weakest.v}</span> : null}
+                  {weakest ? <span className="ovw-meta"> · shows up as {BARRIER[weakest.p.id]}</span> : null}
+                </dd>
+              </div>
+              <div className="ovw-row">
+                <Tile k="resp" />
+                <dt>Responses</dt>
+                <dd><b>{totalN}</b>{totalTarget ? <span className="ovw-meta"> of {totalTarget} targeted ({coverage}%)</span> : null}</dd>
+              </div>
+              <div className="ovw-row">
+                <Tile k="conf" />
+                <dt>Confidence</dt>
+                <dd>
+                  {confidence ? <Badge variant="secondary" data-tone={confidence === "High" ? "open" : confidence === "Medium" ? "draft" : "closed"}>{confidence}</Badge> : "—"}
+                  <span className="ovw-meta"> coverage {coverage ?? "—"}% · don&apos;t-know {dknaAvg ?? "—"}%</span>
+                </dd>
+              </div>
+            </dl>
+          </div>
+        )}
+      </CardContent>
+
+      <div className="ovw-split">
+        <section className="ovw-pane">
+          <h3 className="ovw-h3">Response coverage</h3>
           {groups.map((g) => {
             const pct = g.target_n ? Math.min(100, Math.round((g.n / g.target_n) * 100)) : 0;
             return (
-              <div key={g.id} style={{ marginBottom: 7 }}>
-                <div className="small" style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span>{groupName(g)}</span>
-                  <span className="muted">{g.n}{g.target_n ? ` / ${g.target_n}` : ""}</span>
+              <div key={g.id} className="ovw-cov">
+                <div className="ovw-cov-top">
+                  <span className="ovw-cov-name">
+                    <i className="ovw-dot" style={{ background: GROUP_BAR[g.type] || "var(--primary)" }} />
+                    {groupName(g)}
+                  </span>
+                  <span className="ovw-cov-num">{g.n}{g.target_n ? ` / ${g.target_n}` : ""}</span>
                 </div>
-                <div style={{ height: 7, background: "#e8e8ec", borderRadius: 99 }}>
-                  <div style={{ width: pct + "%", height: "100%", borderRadius: 99, background: GROUP_BAR[g.type] || "var(--primary)" }} />
+                <div className="ovw-track">
+                  <div className="ovw-fill" style={{ width: pct + "%", background: GROUP_BAR[g.type] || "var(--primary)" }} />
                 </div>
               </div>
             );
           })}
-        </div>
-        <div>
-          <div className="small" style={{ fontWeight: 800, letterSpacing: ".6px", textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>Top priorities</div>
+        </section>
+
+        <section className="ovw-pane ovw-pane-right">
+          <h3 className="ovw-h3">Top priorities</h3>
           {picks.length === 0 ? (
             <p className="small muted">Priorities appear once results clear the anonymity threshold.</p>
           ) : picks.slice(0, 3).map((k, i) => (
-            <div key={i} className="small" style={{ padding: "7px 0", borderBottom: "1px solid var(--line)" }}>
-              <b>{i + 1}.</b> {k.label}
-              {k.service ? <div><Badge variant="outline" data-tone="draft" style={{ marginTop: 4 }}>{k.service}</Badge></div> : null}
+            <div key={i} className="ovw-pri">
+              <span className="ovw-num">{i + 1}</span>
+              <div>
+                <div className="ovw-pri-label">{k.label}</div>
+                {k.service ? <Badge variant="outline" data-tone="draft" className="ovw-chip">{k.service}</Badge> : null}
+              </div>
             </div>
           ))}
-        </div>
+        </section>
       </div>
-    </div>
+    </Card>
   );
 }
