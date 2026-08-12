@@ -58,3 +58,11 @@ end $function$;
 
 revoke all on function public.fs_rotate_link(uuid, uuid, text) from public, anon;
 grant execute on function public.fs_rotate_link(uuid, uuid, text) to authenticated;
+
+-- P0-5 (applied as edge function fs-results v9, no schema change):
+--   Per-question group data is now keyed by fs_groups.id, not by group type.
+--   Several custom groups can share the generic 'other' type, which silently
+--   merged them in every comparison. A type alias is still emitted when a type
+--   is unique among visible groups, so older frontends keep working.
+--   Responses payloads carry schema:"id-keyed"; report snapshots written before
+--   this are type-keyed and are read via the legacy fallback in app/lib/gaps.js.

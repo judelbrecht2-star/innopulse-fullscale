@@ -657,8 +657,8 @@ function GapsCard({ results }) {
               <TableCell>
                 {e ? (
                   <>
-                    <Badge variant="outline" data-tone="closed" style={{ marginRight: 6 }}>{nameOfType(e.hiType)}: <b>{e.hi}</b></Badge>
-                    <Badge variant="outline" data-tone="closed">{nameOfType(e.loType)}: <b>{e.lo}</b></Badge>
+                    <Badge variant="outline" data-tone="closed" style={{ marginRight: 6 }}>{(e.hiLabel || nameOfType(e.hiType))}: <b>{e.hi}</b></Badge>
+                    <Badge variant="outline" data-tone="closed">{(e.loLabel || nameOfType(e.loType))}: <b>{e.lo}</b></Badge>
                   </>
                 ) : <span className="small muted">not enough shared questions</span>}
               </TableCell>
@@ -667,7 +667,7 @@ function GapsCard({ results }) {
                 {!e ? "—" : (
                   <>
                     {e.d}
-                    {e.d >= 20 ? <span className="small" style={{ color: "var(--band-low)" }}> ▲ {nameOfType(e.hiType)} vs {nameOfType(e.loType)}</span> : null}
+                    {e.d >= 20 ? <span className="small" style={{ color: "var(--band-low)" }}> ▲ {(e.hiLabel || nameOfType(e.hiType))} vs {(e.loLabel || nameOfType(e.loType))}</span> : null}
                   </>
                 )}
               </TableCell>
@@ -707,7 +707,7 @@ function InterventionsCard({ results, library }) {
     const gp = gapMap[p.id];
     if (gp) {
       const gapEntry = library.find((e) => e.trigger_type === "gap" && e.pillar === p.id && gp.d >= Number(e.gap_min || 20));
-      if (gapEntry) picks.push({ entry: gapEntry, p, why: `${nameOfType(gp.hiType)} ${gp.hi} vs ${nameOfType(gp.loType)} ${gp.lo} (gap ${gp.d}, ${gp.items} shared Qs)` });
+      if (gapEntry) picks.push({ entry: gapEntry, p, why: `${(gp.hiLabel || nameOfType(gp.hiType))} ${gp.hi} vs ${(gp.loLabel || nameOfType(gp.loType))} ${gp.lo} (gap ${gp.d}, ${gp.items} shared Qs)` });
     }
   }
   const ranked = pillars

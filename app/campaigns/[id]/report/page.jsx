@@ -76,7 +76,7 @@ function Report() {
     const gp = gapMap[p.id];
     if (gp) {
       const gapEntry = library.find((e) => e.trigger_type === "gap" && e.pillar === p.id && gp.d >= Number(e.gap_min || 20));
-      if (gapEntry) picks.push({ entry: gapEntry, p, why: `${nameOfType(gp.hiType)} ${gp.hi} vs ${nameOfType(gp.loType)} ${gp.lo} on ${gp.items} shared questions` });
+      if (gapEntry) picks.push({ entry: gapEntry, p, why: `${(gp.hiLabel || nameOfType(gp.hiType))} ${gp.hi} vs ${(gp.loLabel || nameOfType(gp.loType))} ${gp.lo} on ${gp.items} shared questions` });
     }
   }
   if (overall) {
@@ -185,8 +185,8 @@ function Report() {
                 {gapRows.map(({ p, e }) => (
                   <tr key={p.id}>
                     <td>{p.short}</td>
-                    <td>{nameOfType(e.hiType)} · <b>{e.hi}</b></td>
-                    <td>{nameOfType(e.loType)} · <b>{e.lo}</b></td>
+                    <td>{(e.hiLabel || nameOfType(e.hiType))} · <b>{e.hi}</b></td>
+                    <td>{(e.loLabel || nameOfType(e.loType))} · <b>{e.lo}</b></td>
                     <td className="small muted">{e.items}</td>
                     <td><b>{e.d}</b>{e.d >= 20 ? <WarningTriangle className="inline size-4 -mt-0.5" /> : ""}</td>
                   </tr>

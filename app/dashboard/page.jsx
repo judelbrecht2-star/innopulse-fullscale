@@ -120,7 +120,7 @@ function ExecOverview({ data }) {
     const gp = gapMap[p.id];
     if (gp) {
       const e = library.find((x) => x.trigger_type === "gap" && x.pillar === p.id && gp.d >= Number(x.gap_min || 20));
-      if (e) picks.push({ p, label: `Close the ${p.short} perception gap (${nameOfType(gp.hiType)} ${gp.hi} vs ${nameOfType(gp.loType)} ${gp.lo})`, service: (e.services || [])[0] });
+      if (e) picks.push({ p, label: `Close the ${p.short} perception gap (${(gp.hiLabel || nameOfType(gp.hiType))} ${gp.hi} vs ${(gp.loLabel || nameOfType(gp.loType))} ${gp.lo})`, service: (e.services || [])[0] });
     }
   }
   if (overall) {

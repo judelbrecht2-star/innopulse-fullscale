@@ -125,7 +125,7 @@ export async function generateWordReport(rep, interps) {
   const gapMap = s.questions ? bestGaps(s.questions, pillars, visible) : {};
   const gapRows = pillars.map((p) => {
     const e = gapMap[p.id]; if (!e) return null;
-    return { short: p.short, hi: e.hi, lo: e.lo, d: e.d, items: e.items, hiName: nameOf(e.hiType), loName: nameOf(e.loType) };
+    return { short: p.short, hi: e.hi, lo: e.lo, d: e.d, items: e.items, hiName: (e.hiLabel || nameOf(e.hiType)), loName: (e.loLabel || nameOf(e.loType)) };
   }).filter(Boolean).sort((a, b) => b.d - a.d);
   const findings = s.findings || [];
   const smalls = visible.filter((g) => g.n < MIN_N);
@@ -336,7 +336,7 @@ export async function generateWordReport(rep, interps) {
       b.push(P(interp(p.id, v)));
     } else b.push(P("This pillar's overall score is suppressed pending sufficient responses."));
     const gp = gapMap[p.id];
-    if (gp) b.push(P(`Perception gap: ${nameOf(gp.hiType)} ${gp.hi} vs ${nameOf(gp.loType)} ${gp.lo} — Δ ${gp.d} points on ${gp.items} shared questions.`, { i: true }));
+    if (gp) b.push(P(`Perception gap: ${(gp.hiLabel || nameOf(gp.hiType))} ${gp.hi} vs ${(gp.loLabel || nameOf(gp.loType))} ${gp.lo} — Δ ${gp.d} points on ${gp.items} shared questions.`, { i: true }));
     const qs = (s.questions || []).filter((q) => q.pillar === p.id);
     if (qs.length && visible.length) {
       const types = visible.map((g) => g.type);

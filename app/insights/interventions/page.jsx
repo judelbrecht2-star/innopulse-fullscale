@@ -71,7 +71,7 @@ export default function Interventions() {
     const e = gapMap[p.id];
     if (!e) return null;
     const entry = library.find((x) => x.trigger_type === "gap" && x.pillar === p.id && e.d >= Number(x.gap_min || 20));
-    return entry ? { p, ...e, hiName: nameOfType(e.hiType), loName: nameOfType(e.loType), entry } : null;
+    return entry ? { p, ...e, hiName: (e.hiLabel || nameOfType(e.hiType)), loName: (e.loLabel || nameOfType(e.loType)), entry } : null;
   }).filter(Boolean).sort((x, y) => y.d - x.d);
 
   // baseline band opportunities (overall pillars, weakest first, excluding high band)

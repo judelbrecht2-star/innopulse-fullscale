@@ -131,7 +131,7 @@ export default function Insights() {
   const dOptB = curDim?.options.find((o) => o.name === dB && !o.suppressed) || null;
 
   // F2: compare the pair ONLY on questions both groups answered
-  const shared = results ? sharedPillarScores(results.questions, pillars, gA, gB) : {};
+  const shared = results ? sharedPillarScores(results.questions, pillars, A, B) : {}; // P0-5: group objects, id-keyed
   const gapRows = pillars.map((p) => ({ p, ...(shared[p.id] || { a: null, b: null, d: null, items: 0 }) }));
   const sharedTotal = gapRows.reduce((s, r) => s + (r.items || 0), 0);
   const reliable = gapRows.filter((r) => r.d != null && r.items >= MIN_ITEMS);
