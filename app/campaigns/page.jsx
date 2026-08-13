@@ -10,11 +10,11 @@ import { Badge } from "@/components/ui/badge";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { ArrowRight, WarningTriangle, Rocket, Page, Group, ReportColumns, InfoCircle, WarningCircle, Search, Plus, SendMail } from "iconoir-react";
 import { activeMembership } from "../lib/org";
+import { archiveCampaign, closeCampaign, createRevisedCampaign, openCampaign, readiness } from "../lib/lifecycle";
 
-function randToken() {
-  const b = new Uint8Array(8); crypto.getRandomValues(b);
-  return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
-}
+/* Respondent tokens are minted server-side by fs_create_campaign,
+   fs_rotate_link and fs_create_revised_campaign. The browser used to generate
+   them here for duplicated campaigns; it no longer creates campaigns at all. */
 function ago(ts) {
   const m = Math.round((Date.now() - new Date(ts).getTime()) / 60000);
   if (m < 1) return "just now"; if (m < 60) return `${m} min ago`;
@@ -102,34 +102,43 @@ export default function Campaigns() {
   const closingSoon = enriched.filter((e) => e.c.status === "open" && e.s.daysLeft != null && e.s.daysLeft <= 7 && e.s.daysLeft >= 0).length;
   const attention = enriched.filter((e) => e.s.warns.length).length;
 
+  /* Lifecycle goes through the audited server transactions only. The database
+     refuses a direct status write, so there is no fallback path to maintain. */
   async function setStatus(id, status) {
+    setErr("");
+    if (status === "open") {
+      const check = await readiness(id);
+      if (check.ok && !check.canOpen) {
+        setErr("Not ready to open — " + check.blocking.map((b) => b.detail).join(" "));
+        return;
+      }
+    }
+    let reason = null;
+    if (status === "closed") {
+      reason = window.prompt("Closing stops collection and revokes every active link.\n\nWhy are you closing it? (recorded in the audit log)");
+      if (reason === null) return;
+    }
     setBusy(true);
-    const { error } = await sb().from("fs_campaigns").update({ status }).eq("id", id);
-    setBusy(false); if (error) setErr(error.message); else load();
+    const r = status === "open" ? await openCampaign(id)
+            : status === "closed" ? await closeCampaign(id, reason)
+            : status === "archived" ? await archiveCampaign(id, reason)
+            : { ok: false, error: `Unsupported transition: ${status}` };
+    setBusy(false);
+    if (!r.ok) setErr(r.error); else load();
   }
+  /* "Next cycle" is a revised draft, created server-side. The old client-side
+     version inserted a campaign with no governance row, which meant the new
+     draft inherited no thresholds and could never pass the readiness check.
+     fs_create_revised_campaign copies the groups and targets, and takes its
+     governance from the organisation's CURRENT defaults — a new cycle is a new
+     analytical contract, not a copy of the old one. */
   async function duplicate(c) {
     setBusy(true); setErr("");
-    try {
-      const { data: created, error: e2 } = await sb().from("fs_campaigns").insert({
-        org_id: c.org_id,
-        name: c.name.replace(/\s*—\s*next cycle.*$/, "") + " — next cycle",
-        status: "draft", questionnaire_version_id: c.questionnaire_version_id,
-        anonymity_threshold: c.anonymity_threshold, created_by: user.id,
-        prior_campaign_id: c.id, // Step 5: links the cycle chain for trend reporting
-      }).select("id").single();
-      if (e2 || !created) throw new Error(e2?.message || "Could not duplicate.");
-      const gs = groups.filter((g) => g.campaign_id === c.id);
-      if (gs.length) {
-        const { data: ng, error: e3 } = await sb().from("fs_groups").insert(
-          gs.map((g) => ({ campaign_id: created.id, type: g.type, label: g.label, target_n: g.target_n }))
-        ).select("id");
-        if (e3) throw new Error(e3.message);
-        await sb().from("fs_links").insert((ng || []).map((g) => ({ campaign_id: created.id, group_id: g.id, token: randToken(), mode: "group" })));
-      }
-      router.push(`/campaigns/${created.id}`);
-      return;
-    } catch (ex) { setErr(String(ex.message || ex)); }
+    const name = c.name.replace(/\s*—\s*next cycle.*$/, "") + " — next cycle";
+    const r = await createRevisedCampaign(c.id, name);
     setBusy(false);
+    if (!r.ok) { setErr(r.error); return; }
+    router.push(`/campaigns/${r.data}`);
   }
 
   const stChip = (c, s) => {

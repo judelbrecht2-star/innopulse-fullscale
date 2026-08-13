@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { ArrowRight, Check, EditPencil, Plus, ShieldCheck } from "iconoir-react";
+import { archiveCampaign, closeCampaign, extendCampaign, openCampaign, readiness } from "../../lib/lifecycle";
 
 function randToken() {
   const b = new Uint8Array(8);
@@ -63,6 +64,8 @@ export default function Campaign() {
   const [uniqCount, setUniqCount] = useState("5");
   const [addName, setAddName] = useState(null);
   const [tEdit, setTEdit] = useState(null); // { gid, val } while editing a group target
+  const [snapshotNote, setSnapshotNote] = useState(""); // launch snapshot confirmation
+  const [ready, setReady] = useState(null); // server-backed readiness checks
 
   const load = useCallback(async () => {
     const { data: u } = await sb().auth.getUser();
@@ -111,6 +114,10 @@ export default function Campaign() {
 
   useEffect(() => { load(); }, [load]);
 
+  /* Readiness comes from the server, so the panel and the launch button can
+     never disagree about whether a campaign may open. */
+  useEffect(() => { if (id) readiness(id).then(setReady); }, [id, c?.status]);
+
   const canManage = role === "owner" || role === "manager";
   function respondUrl(token) { return `${window.location.origin}/respond/${token}`; }
   async function copy(token) {
@@ -124,14 +131,27 @@ export default function Campaign() {
       setQr({ token, dataUrl });
     } catch { setErr("Could not generate the QR code."); }
   }
+  /* Every transition is an audited server transaction. Opening additionally
+     validates readiness, writes the immutable launch snapshot and locks the
+     campaign's governance — all in one commit, or none of it. */
   async function setStatus(status) {
+    setErr("");
+    let reason = null;
+    if (status === "closed") {
+      reason = window.prompt("Closing stops collection and revokes every active link.\n\nWhy are you closing it? (recorded in the audit log)");
+      if (reason === null) return;
+    }
     setBusy(true);
-    // launching uses the audited server transaction (stamps opens_at)
-    const { error } = status === "open"
-      ? await sb().rpc("fs_open_campaign", { p_camp: id })
-      : await sb().from("fs_campaigns").update({ status }).eq("id", id);
+    const r = status === "open" ? await openCampaign(id)
+            : status === "closed" ? await closeCampaign(id, reason)
+            : status === "archived" ? await archiveCampaign(id, reason)
+            : { ok: false, error: `Unsupported transition: ${status}` };
     setBusy(false);
-    if (error) setErr(error.message); else load();
+    if (!r.ok) { setErr(r.error); return; }
+    if (status === "open" && r.data?.config_hash) {
+      setSnapshotNote(`Launch snapshot v${r.data.snapshot_version} written · ${String(r.data.config_hash).slice(0, 12)}…`);
+    }
+    load();
   }
   async function saveSettings(e) {
     e.preventDefault();
@@ -148,22 +168,39 @@ export default function Campaign() {
       }
       demoConf.push({ id: d.id, label: d.label, question: d.question, options });
     }
+    /* Only fields that are still editable at this status are sent. Once a
+       campaign opens, the questionnaire, demographics, segments, thresholds and
+       confidentiality notice are the contract respondents answered under — the
+       database refuses to change them, and sending them anyway would turn a
+       harmless no-op save into an error the user cannot act on. */
+    const isDraft = c.status === "draft";
     const upd = {
       name: editName.trim() || c.name,
-      anonymity_threshold: Math.max(4, Number(editThreshold || 5)),
       thankyou_message: editThanks.trim() || null,
       closed_message: editClosedMsg.trim() || null,
-      segments: segList.length ? segList.slice(0, 30) : null,
-      demographics: demoConf.length ? demoConf : null,
     };
-    if (editCloses) upd.closes_at = new Date(editCloses + "T23:59:59").toISOString();
+    if (isDraft) {
+      upd.anonymity_threshold = Math.max(4, Number(editThreshold || 5));
+      upd.segments = segList.length ? segList.slice(0, 30) : null;
+      upd.demographics = demoConf.length ? demoConf : null;
+      if (editCloses) upd.closes_at = new Date(editCloses + "T23:59:59").toISOString();
+    }
     const { error } = await sb().from("fs_campaigns").update(upd).eq("id", id);
+
+    // Extending an open campaign is a separate, reason-bearing transaction.
     let e2 = null;
-    if (!error && editStatus && editStatus !== c.status) {
-      const r = editStatus === "open"
-        ? await sb().rpc("fs_open_campaign", { p_camp: id })
-        : await sb().from("fs_campaigns").update({ status: editStatus }).eq("id", id);
-      e2 = r.error;
+    if (!error && !isDraft && editCloses) {
+      const next = new Date(editCloses + "T23:59:59").toISOString();
+      if (c.closes_at && new Date(next) > new Date(c.closes_at)) {
+        const reason = window.prompt("Extending the closing date is recorded in the audit log.\n\nWhy are you extending it? (at least 10 characters)");
+        if (reason !== null) {
+          const r = await extendCampaign(id, next, reason);
+          if (!r.ok) e2 = { message: r.error };
+        }
+      }
+    }
+    if (!error && !e2 && editStatus && editStatus !== c.status) {
+      await setStatus(editStatus);
     }
     setBusy(false);
     if (error || e2) setErr((error || e2).message);
@@ -284,7 +321,37 @@ export default function Campaign() {
           <a className="btn btn-primary" href="#invites"><I.plus style={{ width: 16, height: 16, stroke: "#fff" }} /> Generate link</a>
         ) : null}
       </div>
-      {err ? <div className="err">{err}</div> : null}
+      {err ? <div className="err" role="alert">{err}</div> : null}
+      {snapshotNote ? <div className="ok" role="status">{snapshotNote}</div> : null}
+
+      {/* Readiness — computed by the server, so this panel and the launch
+          button can never disagree about whether the campaign may open. */}
+      {canManage && c.status === "draft" && ready?.ok ? (
+        <div className="card">
+          <h2 style={{ marginTop: 0 }}>Readiness</h2>
+          <p className="small muted" style={{ marginTop: 0 }}>
+            {ready.canOpen
+              ? `Ready to open. ${ready.warnings.length} advisory item${ready.warnings.length === 1 ? "" : "s"} you may still want to address.`
+              : `${ready.blocking.length} item${ready.blocking.length === 1 ? "" : "s"} must be resolved before this campaign can open.`}
+          </p>
+          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 8 }}>
+            {[...ready.blocking, ...ready.warnings].map((chk) => (
+              <li key={chk.code} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                <Badge variant="outline" data-tone={chk.severity === "blocking" ? "closed" : "draft"}>
+                  {chk.severity === "blocking" ? "Blocking" : "Advisory"}
+                </Badge>
+                <span className="small">{chk.detail}</span>
+              </li>
+            ))}
+            {ready.blocking.length === 0 && ready.warnings.length === 0 ? (
+              <li className="small muted">Every check passed.</li>
+            ) : null}
+          </ul>
+          <p className="small muted" style={{ marginBottom: 0 }}>
+            {ready.passed.length} of {ready.checks.length} checks passed. Only blocking items prevent launch.
+          </p>
+        </div>
+      ) : null}
 
       <div className="stats">
         <div className="stat"><span className="ic c-red"><I.link /></span><div><div className="k">Active links</div><div className="v">{activeCount}</div></div></div>
@@ -520,19 +587,30 @@ export default function Campaign() {
               <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "18px 0 8px" }}>
                 <span className="numchip sm">2</span><h2 style={{ margin: 0, fontSize: 16.5 }}>Privacy &amp; segmentation</h2>
               </div>
+              {c.status !== "draft" ? (
+                <div className="lockrow" style={{ margin: "0 0 12px" }}>
+                  <ShieldCheck className="inline size-4 -mt-0.5" /> <b>Locked at launch.</b> The questionnaire, thresholds,
+                  demographics, segments and confidentiality notice are the configuration respondents answered under, and are
+                  frozen in this campaign&apos;s launch snapshot. To change any of them, start a revised campaign draft.
+                </div>
+              ) : null}
               <div className="grid2">
                 <div>
-                  <label className="f">Anonymity threshold</label>
+                  <label className="f" id="thr-label">Anonymity threshold</label>
                   <div style={{ display: "flex", alignItems: "stretch", maxWidth: 200 }}>
-                    <button type="button" className="btn btn-ghost" style={{ borderRadius: "10px 0 0 10px", padding: "0 16px" }}
+                    <button type="button" className="btn btn-ghost" disabled={c.status !== "draft"} aria-label="Decrease threshold"
+                      style={{ borderRadius: "10px 0 0 10px", padding: "0 16px" }}
                       onClick={() => setEditThreshold(String(Math.max(4, Number(editThreshold || 5) - 1)))}>−</button>
-                    <Input type="text" inputMode="numeric" value={editThreshold} style={{ borderRadius: 0, textAlign: "center" }}
+                    <Input type="text" inputMode="numeric" value={editThreshold} aria-labelledby="thr-label"
+                      disabled={c.status !== "draft"} style={{ borderRadius: 0, textAlign: "center" }}
                       onChange={(e) => setEditThreshold(e.target.value.replace(/\D/g, ""))} />
-                    <button type="button" className="btn btn-ghost" style={{ borderRadius: "0 10px 10px 0", padding: "0 16px" }}
+                    <button type="button" className="btn btn-ghost" disabled={c.status !== "draft"} aria-label="Increase threshold"
+                      style={{ borderRadius: "0 10px 10px 0", padding: "0 16px" }}
                       onClick={() => setEditThreshold(String(Number(editThreshold || 5) + 1))}>+</button>
                   </div>
                   <p className="small muted" style={{ margin: "6px 0 0" }}>
                     <ShieldCheck className="inline size-4 -mt-0.5" /> Results for a group or segment appear only after {Math.max(4, Number(editThreshold || 5))} responses. Minimum 4.
+                    {c.status === "draft" ? " Inherited from your organisation defaults." : " Locked."}
                   </p>
                 </div>
                 <div>

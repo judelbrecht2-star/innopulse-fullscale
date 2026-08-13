@@ -7,7 +7,9 @@ const r1 = (v) => Math.round(v * 10) / 10;
 
 export function computeTrend(cur, prior) {
   if (!cur || !prior) return null;
-  const comparable = cur.questionnaire_version && cur.questionnaire_version === prior.questionnaire_version;
+  // Always a real boolean: an unknown version used to make this `null`, which
+  // reads as "we don't know" when the answer is "no, don't claim comparability".
+  const comparable = !!cur.questionnaire_version && cur.questionnaire_version === prior.questionnaire_version;
   const co = cur.overall && !cur.overall.suppressed ? cur.overall : null;
   const po = prior.overall && !prior.overall.suppressed ? prior.overall : null;
 

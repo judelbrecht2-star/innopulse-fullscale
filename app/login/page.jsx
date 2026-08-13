@@ -19,7 +19,8 @@ export default function Login() {
     if (!email) { setErr("Enter your email first, then click the reset link."); return; }
     setBusy(true);
     const { error } = await sb().auth.resetPasswordForEmail(email, {
-      redirectTo: "https://innopulse-fullscale.vercel.app/account",
+      // /account still redirects here, but send people straight to the form.
+      redirectTo: "https://innopulse-fullscale.vercel.app/settings/security",
     });
     setBusy(false);
     if (error) setErr(error.message);

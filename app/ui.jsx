@@ -74,7 +74,7 @@ const NAV = [
   { id: "responses", label: "Responses", href: "/responses", Icon: ChatLines },
   { id: "insights", label: "Insights", href: "/insights", Icon: StatsUpSquare },
   { id: "reports", label: "Reports", href: "/reports", Icon: Page },
-  { id: "settings", label: "Settings", href: "/account", Icon: Settings },
+  { id: "settings", label: "Settings", href: "/settings/profile", Icon: Settings },
 ];
 
 /* ---------- App shell — shadcn/ui Sidebar, dark TGS treatment ---------- */

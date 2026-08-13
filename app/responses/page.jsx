@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Check, Download, Lock, Plus, ShieldCheck } from "iconoir-react";
+import { effectiveThresholds, gateFor } from "../lib/thresholds";
 
 const PILLAR_NAMES = { sii: "Strategic intent", iem: "Environment", oic: "Capability", ipm: "Process", roi: "Return on innovation" };
 function csvEsc(v) { const s = String(v ?? ""); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
@@ -57,6 +58,9 @@ export default function Responses() {
   const [detail, setDetail] = useState(null); // pillar breakdown for drawer
 
   const [servedTotals, setServedTotals] = useState({}); // group type -> served question count
+  // Governance thresholds, as reported by fs-responses-ops. The server is the
+  // authority; these only decide what the console says while it is locked.
+  const [gates, setGates] = useState(null); // { score, comment }
 
   useEffect(() => {
     (async () => {
@@ -123,15 +127,24 @@ export default function Responses() {
           if (row.nComments) cmap[row.id] = Array.from({ length: row.nComments }, () => ({}));
         }
         setAggs(a); setComms(cmap);
-      } else { setAggs({}); setComms({}); }
-    } catch { setAggs({}); setComms({}); }
+        setGates({
+          score: j.score_threshold ?? j.threshold ?? null,
+          comment: j.comment_threshold ?? j.score_threshold ?? j.threshold ?? null,
+        });
+      } else { setAggs({}); setComms({}); setGates(null); }
+    } catch { setAggs({}); setComms({}); setGates(null); }
   }, [campaigns]);
 
   useEffect(() => { load(sel); }, [sel, load]);
 
   const canManage = role === "owner" || role === "manager";
   const groupById = Object.fromEntries(groups.map((g) => [g.id, g]));
-  const threshold = campaign?.anonymity_threshold ?? 5;
+  // fs_campaigns.anonymity_threshold is a deprecated mirror; governance wins.
+  // Same helper the tests pin, so this display can't drift from the server rule.
+  const { score: threshold, comment: commentThreshold } = effectiveThresholds(
+    { score_threshold: gates?.score, comment_threshold: gates?.comment },
+    campaign,
+  );
 
   // ----- build unified rows -----
   const rows = [];
@@ -320,7 +333,12 @@ export default function Responses() {
               <span className="frac">{n} / {g.target_n || "—"}</span>
               <span className="bar"><i style={{ width: pct + "%", background: GROUP_BAR[g.type] || "var(--primary)" }} /></span>
               <span className="pct">{pct}%</span>
-              {n < threshold ? <span className="privnote"><Lock className="inline size-4 -mt-0.5" /> hidden until {threshold} completed</span> : <span className="privnote" style={{ visibility: "hidden" }}>ok</span>}
+              {(() => {
+                const gate = gateFor(n, { score: threshold, comment: commentThreshold });
+                if (gate === "suppressed") return <span className="privnote"><Lock className="inline size-4 -mt-0.5" /> scores hidden until {threshold} completed</span>;
+                if (gate === "scores-only") return <span className="privnote"><Lock className="inline size-4 -mt-0.5" /> comments hidden until {commentThreshold} completed</span>;
+                return <span className="privnote" style={{ visibility: "hidden" }}>ok</span>;
+              })()}
               <span className="small muted" style={{ width: 110 }}>{lastForGroup ? `last ${ago(lastForGroup.submitted_at)}` : "no responses yet"}</span>
               {link ? (
                 <Button variant="ghost" size="sm" onClick={() => copyLink(link.token)}>{copied === link.token ? "Copied" : "Copy link"}</Button>
@@ -432,9 +450,9 @@ export default function Responses() {
               if (detail.error) return <div className="err" style={{ marginTop: 14 }}>Could not load this response.</div>;
               if (detail.locked) return (
                 <div className="lockrow" style={{ marginTop: 16 }}>
-                  <Lock className="inline size-4 -mt-0.5" /> This group has {detail.have} of {detail.needed} responses. To protect respondents
-                  in small groups, per-response answers and written feedback stay on the server until
-                  the group passes the anonymity threshold (the owner can view sooner).
+                  <Lock className="inline size-4 -mt-0.5" /> This group has {detail.have} of {detail.needed} responses. To protect
+                  respondents in small groups, per-response answers and written feedback stay on the server until the group
+                  passes the comment threshold. This applies to every role, including the owner.
                 </div>
               );
               return (
