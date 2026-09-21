@@ -18,6 +18,12 @@ const PRI = { 3: "P3 · Urgent", 2: "P2 · Material", 1: "P1 · Monitor" };
 const PRIC = { 3: "var(--primary)", 2: "var(--amber, #b7791f)", 1: "var(--muted)" };
 const ISO_LABEL = { 4: "Context", 5: "Leadership", 6: "Planning", 7: "Support", 8: "Operation", 9: "Performance evaluation", 10: "Improvement" };
 const CONF_ORDER = ["High", "Medium-High", "Medium"];
+const JEV_VERDICT = {
+  corroborated: { label: "Corroborated", color: "var(--green, #2f855a)", text: "Multiple relevant comments support this interpretation without material contradiction." },
+  mixed: { label: "Mixed evidence", color: "var(--amber, #b7791f)", text: "Written responses contain both supporting and contradictory evidence. Narrow or qualify the conclusion before approval." },
+  contradicted: { label: "Contradicted", color: "var(--primary)", text: "Multiple relevant comments push against this interpretation. Treat it as a prompt for analyst investigation, not a conclusion." },
+  insufficient: { label: "Insufficient evidence", color: "var(--muted)", text: "Too little directly relevant written evidence is available to corroborate or challenge this interpretation." },
+};
 
 function Chip({ label, count, on, color, onClick }) {
   return (
@@ -48,6 +54,8 @@ export default function FindingsWorkbench() {
   const [sortBy, setSortBy] = useState("pri"); // pri | conf | rev
   const [cur, setCur] = useState(null); // finding id
   const [busy, setBusy] = useState(false);
+  const [jevEvidence, setJevEvidence] = useState({});
+  const [jevStatus, setJevStatus] = useState("idle");
 
   useEffect(() => {
     (async () => {
@@ -64,7 +72,7 @@ export default function FindingsWorkbench() {
 
   const load = useCallback(async (cid) => {
     if (!cid) return;
-    setResults(null); setErr(""); setCur(null);
+    setResults(null); setErr(""); setCur(null); setJevEvidence({}); setJevStatus("idle");
     const { data: sess } = await sb().auth.getSession();
     const jwt = sess.session?.access_token;
     if (!jwt) return;
@@ -79,6 +87,43 @@ export default function FindingsWorkbench() {
     } catch { setErr("Could not load results."); }
   }, []);
   useEffect(() => { load(sel); }, [sel, load]);
+
+  useEffect(() => {
+    if (!results || !sel) return;
+    const candidates = evaluateFindings(results)
+      .filter((finding) => finding.klass === CLASS.SUP || finding.klass === CLASS.HYP)
+      .slice(0, 8)
+      .map((finding) => ({
+        id: finding.id,
+        title: finding.title,
+        conclusion: finding.text,
+        alternatives: finding.alternatives,
+        klass: finding.klass,
+      }));
+    if (!candidates.length) { setJevStatus("complete"); return; }
+    let cancelled = false;
+    setJevStatus("loading");
+    (async () => {
+      try {
+        const { data: sess } = await sb().auth.getSession();
+        const jwt = sess.session?.access_token;
+        if (!jwt) throw new Error("No session");
+        const response = await fetch(`${FN_BASE}/fs-jev-findings`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${jwt}` },
+          body: JSON.stringify({ campaign_id: sel, findings: candidates }),
+        });
+        if (!response.ok) throw new Error("Evidence check failed");
+        const payload = await response.json();
+        if (cancelled) return;
+        setJevEvidence(Object.fromEntries((payload.results || []).map((row) => [row.finding_id, row])));
+        setJevStatus(payload.status === "disabled" ? "disabled" : "complete");
+      } catch {
+        if (!cancelled) setJevStatus("unavailable");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [results, sel]);
 
   const findings = results ? evaluateFindings(results) : [];
   const clauseOf = (f) => ((f.iso || "").match(/Clause (\d+)/) || [])[1] || "";
@@ -132,8 +177,11 @@ export default function FindingsWorkbench() {
   }
 
   function exportEvidence() {
-    const rows = [["Priority", "Finding", "Class", "Confidence", "ISO 56001", "Trigger", "Conclusion", "Evidence", "Alternatives", "Validate", "Reviewed", "Analyst: contradictory evidence", "Analyst: alternative explanation"]];
-    findings.forEach((f) => rows.push([PRI[f.severity], f.title, f.klass, f.confidence, f.iso || "", f.trigger || "", f.text, f.evidence.join(" "), f.alternatives, f.validate, reviews[f.id] ? "yes" : "no", reviews[f.id]?.note_contradictory || "", reviews[f.id]?.note_alternative || ""]));
+    const rows = [["Priority", "Finding", "Class", "Confidence", "ISO 56001", "Trigger", "Conclusion", "Evidence", "Alternatives", "Validate", "Jev shadow verdict", "Jev support comments", "Jev contradictory comments", "Jev eligible comments", "Reviewed", "Analyst: contradictory evidence", "Analyst: alternative explanation"]];
+    findings.forEach((f) => {
+      const jev = jevEvidence[f.id];
+      rows.push([PRI[f.severity], f.title, f.klass, f.confidence, f.iso || "", f.trigger || "", f.text, f.evidence.join(" "), f.alternatives, f.validate, jev?.verdict || "", jev?.support_count ?? "", jev?.contradiction_count ?? "", jev?.eligible_comment_count ?? "", reviews[f.id] ? "yes" : "no", reviews[f.id]?.note_contradictory || "", reviews[f.id]?.note_alternative || ""]);
+    });
     const csv = rows.map((r) => r.map(csvEsc).join(",")).join("\r\n");
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
@@ -264,6 +312,34 @@ export default function FindingsWorkbench() {
 
               <div className="small" style={{ margin: "12px 0 4px", fontWeight: 800 }}>Evidence cited</div>
               <p className="small muted" style={{ margin: "0 0 14px" }}>{active.evidence.join("  ")}</p>
+
+              {active.klass !== CLASS.OBS ? (() => {
+                const jev = jevEvidence[active.id];
+                const meta = jev ? JEV_VERDICT[jev.verdict] : null;
+                return (
+                  <div style={{ border: "1px solid var(--line)", background: "var(--bg2, #f7f5f1)", borderRadius: 12, padding: "12px 14px", marginBottom: 14 }}>
+                    <div className="small" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontWeight: 800, marginBottom: 5 }}>
+                      Jev written-evidence check
+                      <Badge variant="outline" data-tone="draft" style={{ textTransform: "none" }}>shadow · advisory only</Badge>
+                      {meta ? <span style={{ color: meta.color }}>{meta.label}</span> : null}
+                    </div>
+                    {jevStatus === "loading" ? <p className="small muted" style={{ margin: 0 }}>Checking privacy-eligible written responses…</p> : null}
+                    {jevStatus === "unavailable" ? <p className="small muted" style={{ margin: 0 }}>The written-evidence check is temporarily unavailable. The deterministic finding is unchanged.</p> : null}
+                    {jevStatus === "disabled" ? <p className="small muted" style={{ margin: 0 }}>The written-evidence pilot is disabled. The deterministic finding is unchanged.</p> : null}
+                    {jev && meta ? (
+                      <>
+                        <p className="small" style={{ margin: 0, lineHeight: 1.55 }}>{meta.text}</p>
+                        <p className="small muted" style={{ margin: "6px 0 0" }}>
+                          {jev.support_count} supporting · {jev.contradiction_count} contradictory · {jev.relevant_count} relevant of {jev.evaluated_comment_count} evaluated
+                          {jev.eligible_comment_count > jev.evaluated_comment_count ? ` (${jev.eligible_comment_count} privacy-eligible)` : ""}
+                          {jev.latency_ms != null ? ` · ${jev.latency_ms} ms` : ""}
+                        </p>
+                      </>
+                    ) : null}
+                    <p className="small muted" style={{ margin: "6px 0 0" }}>Jev cannot create, remove or approve a finding. Analyst review remains required before report publication.</p>
+                  </div>
+                );
+              })() : null}
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <Link className="btn btn-primary btn-sm" href="/insights/interventions"><ArrowRight className="inline size-4 -mt-0.5" /> Add to intervention roadmap</Link>
