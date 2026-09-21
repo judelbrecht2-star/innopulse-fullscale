@@ -92,7 +92,7 @@ export default function FindingsWorkbench() {
     if (!results || !sel) return;
     const candidates = evaluateFindings(results)
       .filter((finding) => finding.klass === CLASS.SUP || finding.klass === CLASS.HYP)
-      .slice(0, 8)
+      .slice(0, 12)
       .map((finding) => ({
         id: finding.id,
         title: finding.title,

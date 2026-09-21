@@ -13,7 +13,7 @@ import {
 const TYPE_SAFE_URL = "https://api.typesafe.ai/v1/systemone";
 const ALLOWED_CLASSES = new Set(["Supported interpretation", "Plausible hypothesis"]);
 const ALLOWED_ROLES = new Set(["owner", "manager", "analyst"]);
-const MAX_FINDINGS = 8;
+const MAX_FINDINGS = 12;
 const CONCURRENCY = 2;
 
 const CORS: Record<string, string> = {
