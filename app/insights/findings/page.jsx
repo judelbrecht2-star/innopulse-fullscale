@@ -20,9 +20,17 @@ const ISO_LABEL = { 4: "Context", 5: "Leadership", 6: "Planning", 7: "Support", 
 const CONF_ORDER = ["High", "Medium-High", "Medium"];
 const JEV_VERDICT = {
   corroborated: { label: "Corroborated", color: "var(--green, #2f855a)", text: "Multiple relevant comments support this interpretation without material contradiction." },
+  leaning_support: { label: "Leaning support", color: "var(--teal, #2c7a7b)", text: "One directly relevant comment supports this interpretation. Treat it as a lead, not confirmation." },
   mixed: { label: "Mixed evidence", color: "var(--amber, #b7791f)", text: "Written responses contain both supporting and contradictory evidence. Narrow or qualify the conclusion before approval." },
+  leaning_contradiction: { label: "Leaning contradiction", color: "var(--amber, #b7791f)", text: "One directly relevant comment weakens or qualifies this interpretation. Review the counter-evidence before approval." },
   contradicted: { label: "Contradicted", color: "var(--primary)", text: "Multiple relevant comments push against this interpretation. Treat it as a prompt for analyst investigation, not a conclusion." },
   insufficient: { label: "Insufficient evidence", color: "var(--muted)", text: "Too little directly relevant written evidence is available to corroborate or challenge this interpretation." },
+};
+const LEDGER_TONE = {
+  supporting: { label: "Supports", color: "var(--green, #2f855a)" },
+  contradictory: { label: "Challenges", color: "var(--primary)" },
+  context: { label: "Context", color: "var(--amber, #b7791f)" },
+  irrelevant: { label: "Not used", color: "var(--muted)" },
 };
 
 function Chip({ label, count, on, color, onClick }) {
@@ -56,6 +64,8 @@ export default function FindingsWorkbench() {
   const [busy, setBusy] = useState(false);
   const [jevEvidence, setJevEvidence] = useState({});
   const [jevStatus, setJevStatus] = useState("idle");
+  const [jevMatches, setJevMatches] = useState({});
+  const [matchStatus, setMatchStatus] = useState({});
 
   useEffect(() => {
     (async () => {
@@ -72,7 +82,7 @@ export default function FindingsWorkbench() {
 
   const load = useCallback(async (cid) => {
     if (!cid) return;
-    setResults(null); setErr(""); setCur(null); setJevEvidence({}); setJevStatus("idle");
+    setResults(null); setErr(""); setCur(null); setJevEvidence({}); setJevStatus("idle"); setJevMatches({}); setMatchStatus({});
     const { data: sess } = await sb().auth.getSession();
     const jwt = sess.session?.access_token;
     if (!jwt) return;
@@ -174,6 +184,35 @@ export default function FindingsWorkbench() {
     if ((reviews[f.id]?.[field] || null) === v) return;
     await sb().from("fs_finding_reviews").update({ [field]: v }).eq("campaign_id", sel).eq("rule_id", f.id);
     setReviews((rv) => ({ ...rv, [f.id]: { ...rv[f.id], [field]: v } }));
+  }
+
+  async function matchApprovedInterventions(finding) {
+    setMatchStatus((status) => ({ ...status, [finding.id]: "loading" }));
+    try {
+      const { data: sess } = await sb().auth.getSession();
+      const jwt = sess.session?.access_token;
+      if (!jwt) throw new Error("No session");
+      const response = await fetch(`${FN_BASE}/fs-jev-interventions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${jwt}` },
+        body: JSON.stringify({
+          campaign_id: sel,
+          finding: {
+            id: finding.id,
+            title: finding.title,
+            conclusion: finding.text,
+            validate: finding.validate,
+            iso: finding.iso,
+          },
+        }),
+      });
+      if (!response.ok) throw new Error("Match failed");
+      const payload = await response.json();
+      setJevMatches((matches) => ({ ...matches, [finding.id]: payload }));
+      setMatchStatus((status) => ({ ...status, [finding.id]: payload.status === "disabled" ? "disabled" : "complete" }));
+    } catch {
+      setMatchStatus((status) => ({ ...status, [finding.id]: "unavailable" }));
+    }
   }
 
   function exportEvidence() {
@@ -319,8 +358,8 @@ export default function FindingsWorkbench() {
                 return (
                   <div style={{ border: "1px solid var(--line)", background: "var(--bg2, #f7f5f1)", borderRadius: 12, padding: "12px 14px", marginBottom: 14 }}>
                     <div className="small" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontWeight: 800, marginBottom: 5 }}>
-                      Jev written-evidence check
-                      <Badge variant="outline" data-tone="draft" style={{ textTransform: "none" }}>shadow · advisory only</Badge>
+                      AI evidence review
+                      <Badge variant="outline" data-tone="draft" style={{ textTransform: "none" }}>Jev · advisory</Badge>
                       {meta ? <span style={{ color: meta.color }}>{meta.label}</span> : null}
                     </div>
                     {jevStatus === "loading" ? <p className="small muted" style={{ margin: 0 }}>Checking privacy-eligible written responses…</p> : null}
@@ -334,12 +373,70 @@ export default function FindingsWorkbench() {
                           {jev.eligible_comment_count > jev.evaluated_comment_count ? ` (${jev.eligible_comment_count} privacy-eligible)` : ""}
                           {jev.latency_ms != null ? ` · ${jev.latency_ms} ms` : ""}
                         </p>
+                        <details style={{ marginTop: 10 }}>
+                          <summary className="small" style={{ cursor: "pointer", fontWeight: 800 }}>
+                            Evidence ledger ({(jev.evidence_ledger || []).length})
+                          </summary>
+                          <p className="small muted" style={{ margin: "7px 0" }}>
+                            Privacy-eligible excerpts only · {(jev.sampling?.sampling_omitted_count || 0)} omitted by the balanced sample
+                            {(jev.sampling?.privacy_excluded_count || 0) ? ` · ${jev.sampling.privacy_excluded_count} withheld for identity risk` : ""}
+                            {(jev.sampling?.invalid_or_test_excluded_count || 0) ? ` · ${jev.sampling.invalid_or_test_excluded_count} test/invalid excluded` : ""}
+                          </p>
+                          {(jev.evidence_ledger || []).map((entry) => {
+                            const tone = LEDGER_TONE[entry.disposition] || LEDGER_TONE.context;
+                            return (
+                              <div key={entry.ref} style={{ borderLeft: `3px solid ${tone.color}`, padding: "7px 10px", margin: "7px 0", background: "#fff", borderRadius: 6 }}>
+                                <div className="small" style={{ display: "flex", gap: 7, flexWrap: "wrap", fontWeight: 750 }}>
+                                  <span style={{ color: tone.color }}>{tone.label}</span>
+                                  <span>{entry.ref} · {entry.source_group}{entry.pillar ? ` · ${entry.pillar}` : ""}</span>
+                                </div>
+                                <p className="small" style={{ margin: "4px 0", lineHeight: 1.5 }}>“{entry.excerpt}”</p>
+                                <div className="small muted">support {Math.round(entry.supports * 100)}% · challenge {Math.round(entry.contradicts * 100)}% · relevance {entry.relevance}/2</div>
+                              </div>
+                            );
+                          })}
+                          <div className="small muted" style={{ marginTop: 8 }}>Model {jev.model} · schema {jev.schema_version}{jev.cached ? " · cached result" : ""}</div>
+                        </details>
                       </>
                     ) : null}
                     <p className="small muted" style={{ margin: "6px 0 0" }}>Jev cannot create, remove or approve a finding. Analyst review remains required before report publication.</p>
                   </div>
                 );
               })() : null}
+
+              {(() => {
+                const status = matchStatus[active.id] || "idle";
+                const result = jevMatches[active.id];
+                return (
+                  <div style={{ border: "1px solid var(--line)", background: "#fff", borderRadius: 12, padding: "12px 14px", marginBottom: 14 }}>
+                    <div className="small" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontWeight: 800 }}>
+                      AI-assisted next action
+                      <Badge variant="outline" data-tone="teal" style={{ textTransform: "none" }}>approved library only</Badge>
+                    </div>
+                    <p className="small muted" style={{ margin: "5px 0 9px" }}>Ranks your curated interventions against this finding. It cannot invent or add an action without analyst review.</p>
+                    {status === "idle" ? <Button size="sm" variant="outline" onClick={() => matchApprovedInterventions(active)}>Match approved interventions</Button> : null}
+                    {status === "loading" ? <p className="small muted" style={{ margin: 0 }}>Comparing the finding with the approved library…</p> : null}
+                    {status === "disabled" ? <p className="small muted" style={{ margin: 0 }}>AI intervention matching is currently disabled.</p> : null}
+                    {status === "unavailable" ? <><p className="small" style={{ color: "var(--primary)", margin: "0 0 7px" }}>The match could not be completed.</p><Button size="sm" variant="outline" onClick={() => matchApprovedInterventions(active)}>Try again</Button></> : null}
+                    {status === "complete" && result ? (
+                      <>
+                        {result.selected_id ? <p className="small" style={{ margin: "0 0 8px" }}>Best approved fit · confidence {Math.round((result.confidence || 0) * 100)}%</p> : <p className="small" style={{ margin: "0 0 8px" }}>Jev abstained: no approved intervention was a defensible direct match.</p>}
+                        {(result.matches || []).map((match, index) => (
+                          <div key={match.id} style={{ borderTop: "1px solid var(--line)", padding: "8px 0" }}>
+                            <div className="small" style={{ fontWeight: 800 }}>{index + 1}. {match.summary} · {Math.round((match.probability || 0) * 100)}%</div>
+                            <div className="small muted" style={{ marginTop: 3 }}>{match.pillar?.toUpperCase() || "Cross-pillar"}{match.kpi ? ` · Measure: ${match.kpi}` : ""}</div>
+                          </div>
+                        ))}
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                          <Link className="btn btn-primary btn-sm" href="/insights/interventions">Review in intervention workspace</Link>
+                          <Button size="sm" variant="ghost" onClick={() => matchApprovedInterventions(active)}>Run again</Button>
+                        </div>
+                        <div className="small muted" style={{ marginTop: 7 }}>Model {result.model} · schema {result.schema_version}{result.latency_ms != null ? ` · ${result.latency_ms} ms` : ""}</div>
+                      </>
+                    ) : null}
+                  </div>
+                );
+              })()}
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <Link className="btn btn-primary btn-sm" href="/insights/interventions"><ArrowRight className="inline size-4 -mt-0.5" /> Add to intervention roadmap</Link>

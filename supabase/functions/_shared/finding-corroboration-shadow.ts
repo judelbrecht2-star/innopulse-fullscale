@@ -1,4 +1,4 @@
-export const FINDING_CORROBORATION_SCHEMA_VERSION = "finding-corroboration-v1";
+export const FINDING_CORROBORATION_SCHEMA_VERSION = "finding-corroboration-v2";
 export const FINDING_CORROBORATION_MODEL = "jev-latest";
 export const MAX_EVIDENCE_COMMENTS = 12;
 
@@ -26,6 +26,8 @@ export type CorroborationResult = {
   relevance: number;
   relevance_confidence: number;
 };
+
+export type EvidenceDisposition = "supporting" | "contradictory" | "context" | "irrelevant";
 
 function noul(instructions: string, yes: string, no: string) {
   return { type: "noul", instructions, criteria: { true: yes, false: no } };
@@ -120,10 +122,18 @@ export function normaliseFindingCorroborationAnswers(payload: any, comments: Evi
   return { model: String(payload.model || FINDING_CORROBORATION_MODEL), results, answers };
 }
 
+export function evidenceDisposition(row: CorroborationResult): EvidenceDisposition {
+  if (row.relevance < 1) return "irrelevant";
+  if (row.supports >= 0.7 && row.supports >= row.contradicts + 0.15) return "supporting";
+  if (row.contradicts >= 0.7 && row.contradicts >= row.supports + 0.15) return "contradictory";
+  return "context";
+}
+
 export function aggregateCorroboration(results: CorroborationResult[], eligibleCommentCount = results.length) {
   const relevant = results.filter((row) => row.relevance >= 1);
-  const supportCount = relevant.filter((row) => row.supports >= 0.7 && row.supports >= row.contradicts + 0.15).length;
-  const contradictionCount = relevant.filter((row) => row.contradicts >= 0.7 && row.contradicts >= row.supports + 0.15).length;
+  const supportCount = relevant.filter((row) => evidenceDisposition(row) === "supporting").length;
+  const contradictionCount = relevant.filter((row) => evidenceDisposition(row) === "contradictory").length;
+  const contextCount = relevant.length - supportCount - contradictionCount;
   const mean = (key: "supports" | "contradicts" | "relevance") => relevant.length
     ? relevant.reduce((sum, row) => sum + row[key], 0) / relevant.length
     : 0;
@@ -132,8 +142,10 @@ export function aggregateCorroboration(results: CorroborationResult[], eligibleC
 
   let verdict = "insufficient";
   if (supportCount > 0 && contradictionCount > 0) verdict = "mixed";
-  else if (supportCount >= 2 && supportMean >= 0.72 && contradictionMean <= 0.35) verdict = "corroborated";
-  else if (contradictionCount >= 2 && contradictionMean >= 0.72 && supportMean <= 0.35) verdict = "contradicted";
+  else if (supportCount >= 2) verdict = "corroborated";
+  else if (contradictionCount >= 2) verdict = "contradicted";
+  else if (supportCount === 1) verdict = "leaning_support";
+  else if (contradictionCount === 1) verdict = "leaning_contradiction";
   else if (supportMean >= 0.55 && contradictionMean >= 0.55) verdict = "mixed";
 
   return {
@@ -143,6 +155,7 @@ export function aggregateCorroboration(results: CorroborationResult[], eligibleC
     relevant_count: relevant.length,
     support_count: supportCount,
     contradiction_count: contradictionCount,
+    context_count: contextCount,
     support_mean: supportMean,
     contradiction_mean: contradictionMean,
     relevance_mean: mean("relevance"),
@@ -157,7 +170,20 @@ export function selectEvidenceCandidates(rows: EvidenceComment[], max = MAX_EVID
   const selected: EvidenceComment[] = [];
   const groupCounts = new Map<string, number>();
 
+  // First give each stakeholder-group/pillar combination one place. This keeps
+  // a single high-actionability theme from crowding out the rest of the survey.
+  const strata = new Set<string>();
   for (const row of safe) {
+    const stratum = `${row.group_id}::${row.pillar || "none"}`;
+    if (strata.has(stratum)) continue;
+    selected.push(row);
+    strata.add(stratum);
+    groupCounts.set(row.group_id, (groupCounts.get(row.group_id) || 0) + 1);
+    if (selected.length >= max) return selected;
+  }
+
+  for (const row of safe) {
+    if (selected.some((item) => item.id === row.id)) continue;
     const count = groupCounts.get(row.group_id) || 0;
     if (count >= perGroup) continue;
     selected.push(row);

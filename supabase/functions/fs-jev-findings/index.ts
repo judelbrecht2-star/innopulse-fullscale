@@ -4,6 +4,7 @@ import {
   FINDING_CORROBORATION_SCHEMA_VERSION,
   aggregateCorroboration,
   buildFindingCorroborationBatchRequest,
+  evidenceDisposition,
   normaliseFindingCorroborationAnswers,
   selectEvidenceCandidates,
   type EvidenceComment,
@@ -99,7 +100,37 @@ async function callTypeSafe(apiKey: string, request: unknown) {
   throw new Error("request_failed");
 }
 
-function publicResult(row: any) {
+type SamplingContext = {
+  privacy_excluded_count: number;
+  invalid_or_test_excluded_count: number;
+  sampling_omitted_count: number;
+};
+
+function publicResult(row: any, evidence: EvidenceComment[] = [], sampling: SamplingContext = {
+  privacy_excluded_count: 0,
+  invalid_or_test_excluded_count: 0,
+  sampling_omitted_count: 0,
+}) {
+  const evidenceById = new Map(evidence.map((comment) => [comment.id, comment]));
+  const groupAliases = new Map<string, string>();
+  for (const comment of evidence) {
+    if (!groupAliases.has(comment.group_id)) groupAliases.set(comment.group_id, `Stakeholder group ${groupAliases.size + 1}`);
+  }
+  const ledger = (Array.isArray(row.answers?.comments) ? row.answers.comments : []).flatMap((answer: any, index: number) => {
+    const comment = evidenceById.get(Number(answer.comment_id));
+    if (!comment) return [];
+    return [{
+      ref: `E${index + 1}`,
+      excerpt: String(comment.body || "").trim().slice(0, 320),
+      pillar: comment.pillar || null,
+      source_group: groupAliases.get(comment.group_id) || "Stakeholder group",
+      disposition: evidenceDisposition(answer),
+      supports: Number(answer.supports),
+      contradicts: Number(answer.contradicts),
+      relevance: Number(answer.relevance),
+      relevance_confidence: Number(answer.relevance_confidence),
+    }];
+  });
   return {
     finding_id: row.finding_id,
     status: row.status,
@@ -109,13 +140,21 @@ function publicResult(row: any) {
     relevant_count: Number(row.relevant_count || 0),
     support_count: Number(row.support_count || 0),
     contradiction_count: Number(row.contradiction_count || 0),
+    context_count: Number(row.context_count || 0),
     support_mean: row.support_mean == null ? null : Number(row.support_mean),
     contradiction_mean: row.contradiction_mean == null ? null : Number(row.contradiction_mean),
     relevance_mean: row.relevance_mean == null ? null : Number(row.relevance_mean),
     model: row.model || FINDING_CORROBORATION_MODEL,
+    schema_version: row.schema_version || FINDING_CORROBORATION_SCHEMA_VERSION,
     latency_ms: row.latency_ms == null ? null : Number(row.latency_ms),
     completed_at: row.completed_at || null,
     cached: Boolean(row.cached),
+    evidence_ledger: ledger,
+    sampling: {
+      privacy_excluded_count: Number(sampling.privacy_excluded_count || 0),
+      invalid_or_test_excluded_count: Number(sampling.invalid_or_test_excluded_count || 0),
+      sampling_omitted_count: Number(sampling.sampling_omitted_count || 0),
+    },
   };
 }
 
@@ -174,14 +213,21 @@ Deno.serve(async (req: Request) => {
 
   let evidence: EvidenceComment[] = [];
   let eligibleCommentCount = 0;
+  const sampling: SamplingContext = {
+    privacy_excluded_count: 0,
+    invalid_or_test_excluded_count: 0,
+    sampling_omitted_count: 0,
+  };
   if (eligibleGroupIds.length) {
     const { data: codingRows } = await admin.from("fs_comment_coding_shadow")
       .select("comment_id,response_id,group_id,actionability,identifying_detail_probability")
       .eq("campaign_id", campaignId)
       .eq("status", "complete")
-      .in("group_id", eligibleGroupIds)
       .order("actionability", { ascending: false });
-    const safeRows = (codingRows || []).filter((row: any) => validResponseIds.has(row.response_id));
+    sampling.invalid_or_test_excluded_count = (codingRows || []).filter((row: any) => !validResponseIds.has(row.response_id)).length;
+    const safeRows = (codingRows || [])
+      .filter((row: any) => validResponseIds.has(row.response_id))
+      .filter((row: any) => eligibleGroupIds.includes(row.group_id));
     const commentIds = safeRows.map((row: any) => row.comment_id);
     if (commentIds.length) {
       const { data: comments } = await admin.from("fs_comments")
@@ -201,8 +247,10 @@ Deno.serve(async (req: Request) => {
         }];
       });
       const privacySafe = candidates.filter((row) => Number(row.identifying_detail_probability ?? 0) <= 0.5);
+      sampling.privacy_excluded_count = candidates.length - privacySafe.length;
       eligibleCommentCount = privacySafe.length;
       evidence = selectEvidenceCandidates(privacySafe);
+      sampling.sampling_omitted_count = Math.max(0, privacySafe.length - evidence.length);
     }
   }
 
@@ -222,7 +270,7 @@ Deno.serve(async (req: Request) => {
       .eq("schema_version", FINDING_CORROBORATION_SCHEMA_VERSION)
       .maybeSingle();
     if (existing?.status === "complete" && existing.finding_signature === findingSignature && existing.comment_set_hash === commentSetHash) {
-      return publicResult({ ...existing, cached: true });
+      return publicResult({ ...existing, cached: true }, evidence, sampling);
     }
 
     const base = {
@@ -240,6 +288,7 @@ Deno.serve(async (req: Request) => {
       relevant_count: 0,
       support_count: 0,
       contradiction_count: 0,
+      context_count: 0,
       support_mean: 0,
       contradiction_mean: 0,
       relevance_mean: 0,
@@ -255,7 +304,7 @@ Deno.serve(async (req: Request) => {
       .select("*")
       .single();
     if (queueError || !queued) throw new Error("database_error");
-    if (!evidence.length) return publicResult(queued);
+    if (!evidence.length) return publicResult(queued, evidence, sampling);
 
     try {
       const request = buildFindingCorroborationBatchRequest(finding, evidence);
@@ -277,7 +326,7 @@ Deno.serve(async (req: Request) => {
         .select("*")
         .single();
       if (completeError || !complete) throw new Error("database_error");
-      return publicResult(complete);
+      return publicResult(complete, evidence, sampling);
     } catch (error) {
       const code = errorCode(error);
       await admin.from("fs_finding_corroboration_shadow").update({
@@ -285,7 +334,7 @@ Deno.serve(async (req: Request) => {
         error_code: code,
         updated_at: new Date().toISOString(),
       }).eq("id", queued.id);
-      return publicResult({ ...queued, status: "error" });
+      return publicResult({ ...queued, status: "error" }, evidence, sampling);
     }
   }
 
