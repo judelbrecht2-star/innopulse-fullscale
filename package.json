@@ -2,13 +2,16 @@
   "name": "innopulse-fullscale",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "eval:jev": "node scripts/evaluate-system-one.mjs",
+    "eval:jev:dry": "node scripts/evaluate-system-one.mjs --dry-run"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
@@ -17,7 +20,7 @@
     "docx": "^8.5.0",
     "iconoir-react": "^7.12.1",
     "lucide-react": "^1.31.0",
-    "next": "14.2.35",
+    "next": "^16.3.5",
     "next-themes": "^0.4.6",
     "qrcode": "^1.5.4",
     "radix-ui": "^1.6.7",
@@ -29,10 +32,10 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
-    "@vitest/coverage-v8": "^3.2.7",
+    "@vitest/coverage-v8": "^5.0.1",
     "esbuild": "^0.28.2",
     "postcss": "^8.5.26",
     "tailwindcss": "^4.3.3",
-    "vitest": "^3.2.7"
+    "vitest": "^5.0.1"
   }
 }

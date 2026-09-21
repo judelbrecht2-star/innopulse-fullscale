@@ -11,7 +11,7 @@ Supabase project `jydbinexjckfzjqgsmjf` (eu-west-1):
 
 | Function   | Ver | verify_jwt | Purpose |
 |------------|-----|------------|---------|
-| fs-respond | v5  | false (token-gated) | Serve group-filtered questionnaire; validate + store submissions; atomic link claim (fs_use_link); per-device duplicate guard; anonymous progress beacons; no user-agent stored |
+| fs-respond | v7 deployed / v8 local | false (token-gated) | Serve group-filtered questionnaire; validate + store submissions; atomic link claim; per-device duplicate guard; anonymous progress beacons. Local v8 adds privacy-gated Jev comment-coding shadow work. |
 | fs-results | v4  | true | Aggregates with server-side anonymity floor (max(threshold,4)); ?detail=1 adds per-question mean/sd/DK + audience tags |
 | fs-admin   | v2  | true | Team: members list w/ emails, owner invites (inviteUserByEmail), remove |
 | fs-notify  | v1  | true | Reminder emails via Resend (owner/manager; recipients never stored) |
@@ -19,7 +19,15 @@ Supabase project `jydbinexjckfzjqgsmjf` (eu-west-1):
 **To export their exact source into this repo** (next Gate 0 step):
 `npx supabase functions download <name> --project-ref jydbinexjckfzjqgsmjf`
 for each of the four names, committed under `supabase/functions/<name>/index.ts`.
-Secrets required at runtime: `RESEND_API_KEY` (fs-notify).
+Secrets required at runtime: `RESEND_API_KEY` (fs-notify). The local Jev shadow
+pilot additionally requires `TYPESAFE_API_KEY` and
+`JEV_COMMENT_CODING_SHADOW=true`. Keep the flag false until migration 0009 is
+applied and the data-processing/privacy review is complete.
+
+The Jev pilot is shadow-only: it writes service-role-only model outputs to
+`fs_comment_coding_shadow`, never copies raw comment text there, never changes
+analyst tags, findings or reports, and only sends comments for a group after the
+effective comment threshold has been reached.
 
 ## Release Gate status (per the 2026-07-17 product audit)
 
