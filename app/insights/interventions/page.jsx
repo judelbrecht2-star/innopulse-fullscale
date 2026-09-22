@@ -8,6 +8,7 @@ import { bestGaps, MIN_N } from "../../lib/gaps";
 import { outcomeAssessment, OUTCOME_STATUS } from "../../lib/outcomes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Download } from "iconoir-react";
 import { Check, Plus, WarningTriangle } from "iconoir-react";
