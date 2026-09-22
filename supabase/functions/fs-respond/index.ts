@@ -37,7 +37,7 @@ async function loadLink(admin: ReturnType<typeof db>, token: string) {
   if (!link.active) return { err: "This link has been deactivated." };
   if (link.expires_at && new Date(link.expires_at) < new Date()) return { err: "This link has expired." };
   if (link.max_uses && link.used_count >= link.max_uses) return { err: "This link has already been used." };
-  const { data: campaign } = await admin.from("fs_campaigns").select("id, name, status, opens_at, closes_at, anonymity_threshold, questionnaire_version_id, org_id, thankyou_message, closed_message, segments, demographics").eq("id", link.campaign_id).maybeSingle();
+  const { data: campaign } = await admin.from("fs_campaigns").select("id, name, status, opens_at, closes_at, anonymity_threshold, questionnaire_version_id, org_id, thankyou_message, closed_message, segments, demographics, is_sandbox").eq("id", link.campaign_id).maybeSingle();
   if (!campaign) return { err: "Campaign not found." };
   const closedMsg = campaign.closed_message?.trim() || "This assessment is not currently open.";
   if (campaign.status !== "open") return { err: closedMsg };
@@ -61,7 +61,7 @@ Deno.serve(async (req: Request) => {
     if ("err" in r) return J({ error: r.err }, 404);
     const served = filterForGroup(r.qv!.definition, r.group!.type);
     return J({
-      campaign: { name: r.campaign!.name, thankyou_message: r.campaign!.thankyou_message || null, closes_at: r.campaign!.closes_at, segments: r.campaign!.segments || null, demographics: r.campaign!.demographics || null },
+      campaign: { name: r.campaign!.name, is_sandbox: Boolean(r.campaign!.is_sandbox), thankyou_message: r.campaign!.thankyou_message || null, closes_at: r.campaign!.closes_at, segments: r.campaign!.segments || null, demographics: r.campaign!.demographics || null },
       org: { name: r.org?.name },
       group: { type: r.group?.type, label: r.group?.label },
       questionnaire: served,
@@ -134,7 +134,9 @@ Deno.serve(async (req: Request) => {
     const { data: resp, error: e1 } = await admin.from("fs_responses").insert({
       campaign_id: r.campaign!.id, group_id: r.group!.id, link_id: r.link!.id,
       questionnaire_version_id: r.qv!.id,
-      meta: ref ? { ref } : {}, segment, demo,
+      meta: { ...(ref ? { ref } : {}), ...(r.campaign!.is_sandbox ? { sandbox: true } : {}) },
+      flag: r.campaign!.is_sandbox ? "test" : null,
+      segment, demo,
     }).select("id").single();
     if (e1 || !resp) { await admin.rpc("fs_release_link", { p_link: r.link!.id }); return J({ error: "Could not save response." }, 500); }
 

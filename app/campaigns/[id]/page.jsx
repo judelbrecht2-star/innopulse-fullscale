@@ -72,7 +72,7 @@ export default function Campaign() {
     if (!u.user) { router.replace("/login"); return; }
     setUser(u.user);
     const { data: camp, error: e1 } = await sb().from("fs_campaigns")
-      .select("id, org_id, name, status, opens_at, closes_at, anonymity_threshold, thankyou_message, closed_message, segments, demographics").eq("id", id).maybeSingle();
+      .select("id, org_id, name, status, opens_at, closes_at, anonymity_threshold, thankyou_message, closed_message, segments, demographics, is_sandbox").eq("id", id).maybeSingle();
     if (e1 || !camp) { setErr(e1 ? e1.message : "Campaign not found (or you don't have access)."); return; }
     // F8: resolve the caller's OWN role in THIS campaign's org
     const { data: mem } = await sb().from("fs_memberships").select("role")
@@ -321,6 +321,13 @@ export default function Campaign() {
           <a className="btn btn-primary" href="#invites"><I.plus style={{ width: 16, height: 16, stroke: "#fff" }} /> Generate link</a>
         ) : null}
       </div>
+      {c.is_sandbox ? (
+        <div className="card" style={{ borderColor: "var(--amber, #b7791f)", background: "#fffaf0" }}>
+          <Badge variant="secondary" data-tone="draft">Sandbox</Badge>
+          <b style={{ marginLeft: 8 }}>Safe test campaign</b>
+          <p className="small muted" style={{ margin: "5px 0 0" }}>Responses can exercise scoring, findings, the AI evidence review and intervention matching. Official report generation is blocked.</p>
+        </div>
+      ) : null}
       {err ? <div className="err" role="alert">{err}</div> : null}
       {snapshotNote ? <div className="ok" role="status">{snapshotNote}</div> : null}
 
@@ -482,7 +489,9 @@ export default function Campaign() {
         )) : null}
         <Button variant="ghost" size="sm" onClick={exportSummary} disabled={!results}>⬇ Results CSV</Button>
         <Button variant="ghost" size="sm" onClick={exportQuestions} disabled={!results}>⬇ Question detail CSV</Button>
-        <Link className="btn btn-ghost btn-sm" href={`/campaigns/${id}/report`}>Report view (print / PDF)</Link>
+        {c.is_sandbox
+          ? <Button variant="ghost" size="sm" disabled title="Official reports are blocked for sandbox campaigns">Official report blocked</Button>
+          : <Link className="btn btn-ghost btn-sm" href={`/campaigns/${id}/report`}>Report view (print / PDF)</Link>}
       </div>
 
       {canManage ? (

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { sb, FN_BASE } from "../../../lib/supabase";
 import { Shell, I, bandWord, bandOf, groupName } from "../../ui";
 import { bestGaps, MIN_N } from "../../lib/gaps";
+import { outcomeAssessment, OUTCOME_STATUS } from "../../lib/outcomes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +22,7 @@ export default function Interventions() {
   const [results, setResults] = useState(null);
   const [library, setLibrary] = useState([]);
   const [actions, setActions] = useState([]);
+  const [outcomes, setOutcomes] = useState([]);
   const [selPillar, setSelPillar] = useState(null); // { kind:'gap'|'band', id }
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -28,8 +30,12 @@ export default function Interventions() {
   const [msEdit, setMsEdit] = useState(null);
 
   const loadActions = useCallback(async (cid) => {
-    const { data } = await sb().from("fs_actions").select("*").eq("campaign_id", cid).order("created_at");
-    setActions(data || []);
+    const [{ data: plan }, { data: learned }] = await Promise.all([
+      sb().from("fs_actions").select("*").eq("campaign_id", cid).order("created_at"),
+      sb().from("fs_intervention_outcomes").select("*").eq("campaign_id", cid).order("updated_at", { ascending: false }),
+    ]);
+    setActions(plan || []);
+    setOutcomes(learned || []);
   }, []);
 
   useEffect(() => {
@@ -38,7 +44,7 @@ export default function Interventions() {
       if (!u.user) { router.replace("/login"); return; }
       setUser(u.user);
       const { data: cs } = await sb().from("fs_campaigns")
-        .select("id, name, status, created_at").order("created_at", { ascending: false });
+        .select("id, name, status, created_at, is_sandbox").order("created_at", { ascending: false });
       const target = (cs || []).find((c) => c.status === "open") || (cs || [])[0];
       if (!target) { setErr("No campaigns yet."); return; }
       setCampaign(target);
@@ -89,6 +95,14 @@ export default function Interventions() {
   const cur = sel?.kind === "gap" ? gaps.find((g) => g.p.id === sel.id) : opps.find((o) => o.p.id === sel.id);
   const curEntry = cur?.entry || null;
   const curPillar = cur ? cur.p : null;
+  const curOutcome = outcomes.find((outcome) => outcome.intervention_id === curEntry?.id) || null;
+  const baselineScore = curOutcome?.baseline_score ?? (curPillar ? overall?.pillars?.[curPillar.id] : null) ?? "";
+  const learned = curOutcome ? outcomeAssessment({
+    baseline: curOutcome.baseline_score,
+    target: curOutcome.target_score,
+    observed: curOutcome.observed_score,
+    reviewDueAt: curOutcome.review_due_at,
+  }) : null;
   const priorityIndex = sel?.kind === "gap" ? gaps.findIndex((g) => g.p.id === sel.id) + 1 : null;
 
   const actFor = (idx) => actions.find((a) => a.intervention_id === curEntry?.id && a.action_index === idx);
@@ -152,18 +166,49 @@ export default function Interventions() {
     await loadActions(campaign.id);
     setMsEdit(null); setBusy(false);
   }
+  async function saveOutcome(event) {
+    event.preventDefault();
+    if (!curEntry || !curPillar) return;
+    const form = new FormData(event.currentTarget);
+    const baseline = form.get("baseline_score");
+    const target = form.get("target_score");
+    const observed = form.get("observed_score");
+    const reviewDueAt = String(form.get("review_due_at") || "") || null;
+    const assessment = outcomeAssessment({ baseline, target, observed, reviewDueAt });
+    setBusy(true); setErr("");
+    const payload = {
+      campaign_id: campaign.id,
+      intervention_id: curEntry.id,
+      pillar: curPillar.id,
+      kpi: curEntry.kpi || null,
+      baseline_score: baseline === "" ? null : Number(baseline),
+      target_score: target === "" ? null : Number(target),
+      observed_score: observed === "" ? null : Number(observed),
+      review_due_at: reviewDueAt,
+      observed_at: observed === "" ? null : new Date().toISOString(),
+      status: assessment.status,
+      learning_note: String(form.get("learning_note") || "").trim().slice(0, 2000) || null,
+      created_by: curOutcome?.created_by || user.id,
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = await sb().from("fs_intervention_outcomes").upsert(payload, { onConflict: "campaign_id,intervention_id" });
+    if (error) setErr(error.message); else await loadActions(campaign.id);
+    setBusy(false);
+  }
   function exportRoadmap() {
-    const rows = [["Priority", "Type", "Pillar", "Groups compared", "Action / milestone", "Status", "Owner", "Horizon", "Measure", "ISO readiness", "Services"]];
+    const rows = [["Priority", "Type", "Pillar", "Groups compared", "Action / milestone", "Status", "Owner", "Horizon", "Measure", "ISO readiness", "Services", "Outcome status", "Baseline score", "Target score", "Observed score", "Review due", "Learning note"]];
     gaps.forEach((g, gi) => (g.entry.actions || []).forEach((t, i) => {
       const a = actions.find((x) => x.intervention_id === g.entry.id && x.action_index === i);
-      rows.push([gi + 1, "Perception gap", g.p.short, `${g.hiName} ${g.hi} vs ${g.loName} ${g.lo} (${g.items} shared Qs)`, t, a?.status || "not_started", a?.owner || g.entry.owner_suggestion, g.entry.horizon, g.entry.kpi, g.entry.iso_map, (g.entry.services || []).join("; ")]);
+      const outcome = outcomes.find((x) => x.intervention_id === g.entry.id);
+      rows.push([gi + 1, "Perception gap", g.p.short, `${g.hiName} ${g.hi} vs ${g.loName} ${g.lo} (${g.items} shared Qs)`, t, a?.status || "not_started", a?.owner || g.entry.owner_suggestion, g.entry.horizon, g.entry.kpi, g.entry.iso_map, (g.entry.services || []).join("; "), outcome?.status || "planned", outcome?.baseline_score ?? "", outcome?.target_score ?? "", outcome?.observed_score ?? "", outcome?.review_due_at || "", outcome?.learning_note || ""]);
     }));
     opps.forEach((o) => (o.entry.actions || []).forEach((t, i) => {
       const a = actions.find((x) => x.intervention_id === o.entry.id && x.action_index === i);
-      rows.push(["—", `Band (${bandWord(o.v)})`, o.p.short, "All groups", t, a?.status || "not_started", a?.owner || o.entry.owner_suggestion, o.entry.horizon, o.entry.kpi, o.entry.iso_map, (o.entry.services || []).join("; ")]);
+      const outcome = outcomes.find((x) => x.intervention_id === o.entry.id);
+      rows.push(["—", `Band (${bandWord(o.v)})`, o.p.short, "All groups", t, a?.status || "not_started", a?.owner || o.entry.owner_suggestion, o.entry.horizon, o.entry.kpi, o.entry.iso_map, (o.entry.services || []).join("; "), outcome?.status || "planned", outcome?.baseline_score ?? "", outcome?.target_score ?? "", outcome?.observed_score ?? "", outcome?.review_due_at || "", outcome?.learning_note || ""]);
     }));
     actions.filter((a) => a.is_milestone).forEach((a) => {
-      rows.push(["—", "Milestone", pillarById[a.pillar]?.short || a.pillar, "", a.title, a.status, a.owner || "", "", "", "", ""]);
+      rows.push(["—", "Milestone", pillarById[a.pillar]?.short || a.pillar, "", a.title, a.status, a.owner || "", "", "", "", "", "", "", "", "", "", ""]);
     });
     const csv = rows.map((r) => r.map(csvEsc).join(",")).join("\r\n");
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
@@ -190,6 +235,12 @@ export default function Interventions() {
           </Button>
         </div>
       </div>
+      {campaign.is_sandbox ? (
+        <div className="card" style={{ borderColor: "var(--amber, #b7791f)", background: "#fffaf0" }}>
+          <b>Sandbox campaign</b>
+          <p className="small muted" style={{ margin: "4px 0 0" }}>Use this workspace to test action planning and outcome learning. Nothing here can produce an official report.</p>
+        </div>
+      ) : null}
 
       <div className="stats">
         <div className="stat"><span className="ic c-red"><I.info /></span><div>
@@ -328,6 +379,44 @@ export default function Interventions() {
                   </span>
                 )}
               </div>
+            </div>
+
+            <div className="card">
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <h2 style={{ margin: 0, flex: 1 }}>Outcome learning</h2>
+                {curOutcome ? <Badge variant="secondary" data-tone={curOutcome.status === "achieved" ? "open" : curOutcome.status === "at_risk" || curOutcome.status === "not_achieved" ? "closed" : "draft"}>{OUTCOME_STATUS[curOutcome.status] || curOutcome.status}</Badge> : <Badge variant="outline" data-tone="draft">Not measured</Badge>}
+              </div>
+              <p className="small muted" style={{ margin: "6px 0 12px" }}>Record the expected movement now, then return with an observed result. InnoPulse calculates progress without asking AI to reinterpret the number.</p>
+              <form key={`${curEntry?.id || "none"}-${curOutcome?.updated_at || "new"}`} onSubmit={saveOutcome}>
+                <div className="grid2">
+                  <div>
+                    <label className="f">Baseline score</label>
+                    <Input name="baseline_score" type="number" min="0" max="100" step="0.1" defaultValue={baselineScore} placeholder="0–100" />
+                  </div>
+                  <div>
+                    <label className="f">Target score</label>
+                    <Input name="target_score" type="number" min="0" max="100" step="0.1" defaultValue={curOutcome?.target_score ?? ""} placeholder="0–100" />
+                  </div>
+                  <div>
+                    <label className="f">Observed score</label>
+                    <Input name="observed_score" type="number" min="0" max="100" step="0.1" defaultValue={curOutcome?.observed_score ?? ""} placeholder="Add at review" />
+                  </div>
+                  <div>
+                    <label className="f">Review due</label>
+                    <Input name="review_due_at" type="date" defaultValue={curOutcome?.review_due_at || ""} />
+                  </div>
+                </div>
+                <label className="f" style={{ marginTop: 9 }}>What did we learn?</label>
+                <Textarea name="learning_note" maxLength={2000} defaultValue={curOutcome?.learning_note || ""} placeholder="Evidence of adoption, barriers, unintended effects, and what should change next." style={{ minHeight: 82 }} />
+                {learned?.delta != null ? (
+                  <p className="small" style={{ margin: "8px 0 0" }}>
+                    Observed change: <b>{learned.delta > 0 ? "+" : ""}{learned.delta} points</b>
+                    {learned.progressPct != null ? ` · ${learned.progressPct}% of target movement` : ""}
+                  </p>
+                ) : null}
+                <p className="small muted" style={{ margin: "7px 0" }}>Measure: {curEntry?.kpi || "Define a measurable indicator before starting."}</p>
+                <Button size="sm" disabled={busy || !curEntry}>{curOutcome ? "Update outcome review" : "Save outcome baseline"}</Button>
+              </form>
             </div>
 
             {opps.length ? (

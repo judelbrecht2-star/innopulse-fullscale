@@ -44,7 +44,7 @@ export default function Campaigns() {
     const mem = await activeMembership(u.user.id); // P0-3
     setRole(mem?.role || "");
     const [{ data: cs }, { data: gs }, { data: ls }, { data: rs }, { data: vs }] = await Promise.all([
-      sb().from("fs_campaigns").select("id, org_id, name, status, opens_at, closes_at, anonymity_threshold, questionnaire_version_id, created_by, created_at").order("created_at", { ascending: false }),
+      sb().from("fs_campaigns").select("id, org_id, name, status, opens_at, closes_at, anonymity_threshold, questionnaire_version_id, created_by, created_at, is_sandbox").order("created_at", { ascending: false }),
       sb().from("fs_groups").select("id, campaign_id, type, label, target_n"),
       sb().from("fs_links").select("id, campaign_id, mode, active"),
       sb().from("fs_responses").select("id, campaign_id, group_id, submitted_at, valid"),
@@ -85,8 +85,9 @@ export default function Campaigns() {
 
   const enriched = camps.map((c) => ({ c, s: stats(c) }));
   const filtered = enriched.filter(({ c }) => {
+    if (fStatus === "sandbox" && !c.is_sandbox) return false;
+    if (fStatus !== "sandbox" && fStatus !== "active" && ["draft", "open", "closed", "archived"].includes(fStatus) && c.status !== fStatus) return false;
     if (fStatus === "active" && c.status === "archived") return false;
-    if (["draft", "open", "closed", "archived"].includes(fStatus) && c.status !== fStatus) return false;
     if (q.trim() && !(c.name + " " + (vers[c.questionnaire_version_id] || "")).toLowerCase().includes(q.trim().toLowerCase())) return false;
     return true;
   }).sort((a, b) => {
@@ -95,12 +96,13 @@ export default function Campaigns() {
     return new Date(b.c.created_at) - new Date(a.c.created_at);
   });
 
-  const open = enriched.filter(({ c }) => c.status === "open").length;
-  const drafts = enriched.filter(({ c }) => c.status === "draft").length;
-  const totalResp = enriched.reduce((s, e) => s + e.s.n, 0);
-  const avgPct = (() => { const w = enriched.filter((e) => e.c.status === "open" && e.s.target); return w.length ? Math.round(w.reduce((s, e) => s + e.s.pct, 0) / w.length) : 0; })();
-  const closingSoon = enriched.filter((e) => e.c.status === "open" && e.s.daysLeft != null && e.s.daysLeft <= 7 && e.s.daysLeft >= 0).length;
-  const attention = enriched.filter((e) => e.s.warns.length).length;
+  const official = enriched.filter(({ c }) => !c.is_sandbox);
+  const open = official.filter(({ c }) => c.status === "open").length;
+  const drafts = official.filter(({ c }) => c.status === "draft").length;
+  const totalResp = official.reduce((s, e) => s + e.s.n, 0);
+  const avgPct = (() => { const w = official.filter((e) => e.c.status === "open" && e.s.target); return w.length ? Math.round(w.reduce((s, e) => s + e.s.pct, 0) / w.length) : 0; })();
+  const sandboxes = enriched.filter(({ c }) => c.is_sandbox).length;
+  const attention = official.filter((e) => e.s.warns.length).length;
 
   /* Lifecycle goes through the audited server transactions only. The database
      refuses a direct status write, so there is no fallback path to maintain. */
@@ -154,7 +156,7 @@ export default function Campaigns() {
     { k: "Drafts",              v: drafts,    Icon: Page,          tone: "grey"  },
     { k: "Responses collected", v: totalResp, Icon: Group,         tone: "teal"  },
     { k: "Average completion",  v: avgPct + "%", Icon: ReportColumns, tone: "amber" },
-    { k: "Closing soon",        v: closingSoon, Icon: InfoCircle,  tone: "blue"  },
+    { k: "Sandbox campaigns",   v: sandboxes,   Icon: InfoCircle,  tone: "blue"  },
     { k: "Needs attention",     v: attention, Icon: WarningCircle, tone: "red"   },
   ];
 
@@ -194,6 +196,7 @@ export default function Campaigns() {
         <NativeSelect value={fStatus} onChange={(e) => setFStatus(e.target.value)} aria-label="Filter by status">
           <NativeSelectOption value="active">All except archived</NativeSelectOption><NativeSelectOption value="open">Open</NativeSelectOption>
           <NativeSelectOption value="draft">Draft</NativeSelectOption><NativeSelectOption value="closed">Closed</NativeSelectOption><NativeSelectOption value="archived">Archived</NativeSelectOption>
+          <NativeSelectOption value="sandbox">Sandbox / test</NativeSelectOption>
         </NativeSelect>
         <NativeSelect value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sort campaigns">
           <NativeSelectOption value="newest">Newest first</NativeSelectOption><NativeSelectOption value="closing">Closing soon</NativeSelectOption><NativeSelectOption value="activity">Recent activity</NativeSelectOption>
@@ -208,6 +211,7 @@ export default function Campaigns() {
             <div className="cmp-row-id">
               <div className="cmp-title-line">
                 <Link href={`/campaigns/${c.id}`} className="cmp-name">{c.name}</Link>
+                {c.is_sandbox ? <Badge variant="secondary" data-tone="draft">Sandbox</Badge> : null}
                 {stChip(c, s)}
               </div>
               <p className="cmp-meta">
@@ -227,7 +231,9 @@ export default function Campaigns() {
                   <button onClick={() => router.push(`/campaigns/${c.id}`)}>Manage links</button>
                   <button onClick={() => router.push("/responses")}>View responses</button>
                   <button onClick={() => router.push("/insights")}>View insights</button>
-                  <button onClick={() => router.push(`/campaigns/${c.id}/report`)}>Export / report</button>
+                  {c.is_sandbox
+                    ? <button disabled title="Official reports are blocked for sandbox campaigns">Official report blocked</button>
+                    : <button onClick={() => router.push(`/campaigns/${c.id}/report`)}>Export / report</button>}
                   {canManage ? (
                     <>
                       {c.status === "open" ? <button disabled={busy} onClick={() => setStatus(c.id, "closed")}>Close collection</button> : null}

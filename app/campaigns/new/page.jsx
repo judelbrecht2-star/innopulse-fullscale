@@ -31,6 +31,7 @@ export default function NewCampaign() {
   const [name, setName] = useState("");
   const [days, setDays] = useState(30);
   const [threshold, setThreshold] = useState(5);
+  const [isSandbox, setIsSandbox] = useState(false);
   const [groups, setGroups] = useState(
     Object.fromEntries(GROUP_DEFS.map((g) => [g.type, { on: !g.off, target: g.def, label: g.label }]))
   );
@@ -82,7 +83,7 @@ export default function NewCampaign() {
     try {
       // Gate 1: one server-side transaction (fs_create_campaign) validates and
       // creates campaign + groups + links + audit as a DRAFT, or nothing at all.
-      const { data: campId, error } = await sb().rpc("fs_create_campaign", {
+      const { data: campId, error } = await sb().rpc("fs_create_campaign_v2", {
         p_org: org.id,
         p_name: name.trim(),
         p_qv: verId,
@@ -94,6 +95,7 @@ export default function NewCampaign() {
           target: Math.max(0, Number(groups[g.type].target || 0)),
         })),
         p_demographics: demoConf.length ? demoConf : null,
+        p_is_sandbox: isSandbox,
       });
       if (error || !campId) throw new Error(error?.message || "Could not create campaign.");
       router.push(`/campaigns/${campId}`);
@@ -114,6 +116,15 @@ export default function NewCampaign() {
       ) : (
         <form onSubmit={create}>
           <div className="card" style={{ maxWidth: 640 }}>
+            <label style={{ display: "flex", alignItems: "flex-start", gap: 12, cursor: "pointer", padding: "2px 0 14px", borderBottom: "1px solid var(--line)", marginBottom: 14 }}>
+              <input type="checkbox" checked={isSandbox} onChange={(e) => setIsSandbox(e.target.checked)} style={{ marginTop: 4 }} />
+              <span>
+                <b>Sandbox / test campaign</b>
+                <span className="small muted" style={{ display: "block", marginTop: 3 }}>
+                  Use fabricated responses and exercise findings, AI review and intervention matching safely. Sandbox responses stay inside this campaign and official report generation is blocked.
+                </span>
+              </span>
+            </label>
             <label className="f">Campaign name</label>
             <Input type="text" value={name} onChange={(e) => setName(e.target.value)}
               placeholder="e.g. 2026 H2 innovation health check" />
@@ -210,7 +221,7 @@ export default function NewCampaign() {
 
           {err ? <div className="err">{err}</div> : null}
           <Button disabled={busy}>
-            {busy ? "Creating…" : "Create draft campaign"}
+            {busy ? "Creating…" : isSandbox ? "Create sandbox campaign" : "Create draft campaign"}
           </Button>
           <p className="small muted" style={{ marginTop: 8 }}>
             The campaign starts as a <b>draft</b> with its links ready — review everything on the

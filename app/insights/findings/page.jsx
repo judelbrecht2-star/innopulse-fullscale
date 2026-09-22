@@ -73,7 +73,7 @@ export default function FindingsWorkbench() {
       if (!u.user) { router.replace("/login"); return; }
       setUser(u.user);
       const { data: cs } = await sb().from("fs_campaigns")
-        .select("id, name, status, created_at").order("created_at", { ascending: false });
+        .select("id, name, status, created_at, is_sandbox").order("created_at", { ascending: false });
       setCampaigns(cs || []);
       const target = (cs || []).find((c) => c.status === "open") || (cs || [])[0];
       if (target) setSel(target.id);
@@ -242,7 +242,7 @@ export default function FindingsWorkbench() {
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <Button variant="ghost" onClick={exportEvidence} disabled={!findings.length}><Download className="inline size-4 -mt-0.5" /> Export evidence</Button>
           <NativeSelect value={sel} onChange={(e) => setSel(e.target.value)} style={{ width: "auto", fontWeight: 600 }}>
-            {campaigns.map((c) => <NativeSelectOption key={c.id} value={c.id}>{c.name}</NativeSelectOption>)}
+            {campaigns.map((c) => <NativeSelectOption key={c.id} value={c.id}>{c.is_sandbox ? "[Sandbox] " : ""}{c.name}</NativeSelectOption>)}
           </NativeSelect>
         </div>
       </div>

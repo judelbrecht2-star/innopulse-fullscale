@@ -21,12 +21,15 @@ function Report() {
   const [snap, setSnap] = useState(null); // fs_reports row when rendering a frozen snapshot
   const [library, setLibrary] = useState([]);
   const [reviewed, setReviewed] = useState(null); // rule_ids approved for report
+  const [isSandbox, setIsSandbox] = useState(null);
   const [err, setErr] = useState("");
 
   useEffect(() => {
     (async () => {
       const { data: u } = await sb().auth.getUser();
       if (!u.user) { router.replace("/login"); return; }
+      const { data: campaignMeta } = await sb().from("fs_campaigns").select("is_sandbox").eq("id", id).maybeSingle();
+      setIsSandbox(Boolean(campaignMeta?.is_sandbox));
       const { data: sess } = await sb().auth.getSession();
       const jwt = sess.session?.access_token;
       try {
@@ -55,7 +58,16 @@ function Report() {
   }, [id, rid, router]);
 
   if (err) return (<Shell active="campaigns"><div className="err">{err}</div></Shell>);
-  if (!data) return (<Shell active="campaigns"><p className="muted">Preparing report…</p></Shell>);
+  if (isSandbox === null || !data) return (<Shell active="campaigns"><p className="muted">Preparing report…</p></Shell>);
+  if (isSandbox) return (
+    <Shell active="campaigns">
+      <div className="card" style={{ maxWidth: 680, borderColor: "var(--amber, #b7791f)", background: "#fffaf0" }}>
+        <h1>Official report blocked</h1>
+        <p>This is a sandbox campaign. Its scoring, findings and AI services are available for testing, but it cannot render or generate an official report.</p>
+        <a className="btn btn-primary btn-sm" href={`/campaigns/${id}`}>Back to sandbox campaign</a>
+      </div>
+    </Shell>
+  );
 
   const pillars = data.pillars || [];
   const visible = (data.groups || []).filter((g) => !g.suppressed);

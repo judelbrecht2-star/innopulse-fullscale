@@ -49,7 +49,7 @@ export default function Reports() {
     if (!u.user) { router.replace("/login"); return; }
     setUser(u.user);
     const [{ data: cs }, { data: rs }, { data: ip }] = await Promise.all([
-      sb().from("fs_campaigns").select("id, name, status, created_at, client_context, engagement_objective, prior_campaign_id").order("created_at", { ascending: false }),
+      sb().from("fs_campaigns").select("id, name, status, created_at, client_context, engagement_objective, prior_campaign_id, is_sandbox").order("created_at", { ascending: false }),
       sb().from("fs_reports").select("*").order("created_at", { ascending: false }),
       sb().from("fs_interpretations").select("scope, band, body, version"),
     ]);
@@ -59,6 +59,7 @@ export default function Reports() {
   useEffect(() => { load(); }, [load]);
 
   const campName = (id) => camps.find((c) => c.id === id)?.name || "—";
+  const selectedCampaign = camps.find((c) => c.id === genFor);
   const PILLARS = [["sii", "Strategic Innovation Intent"], ["iem", "Innovation Environment"], ["oic", "Organisational Capability"], ["ipm", "Process Management"], ["roi", "Return on Innovation"]];
 
   // load authored content when the selected campaign changes
@@ -107,6 +108,10 @@ export default function Reports() {
   // never from live data — two downloads of the same version are byte-identical.
   async function generate(rtype) {
     if (!genFor) return;
+    if (selectedCampaign?.is_sandbox) {
+      setErr("Official reports are blocked for sandbox campaigns. Use Insights and the evidence export to test the workflow safely.");
+      return;
+    }
     setBusy(true); setErr("");
     try {
       const d = await fetchResults(genFor);
@@ -221,18 +226,28 @@ export default function Reports() {
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <NativeSelect value={genFor} onChange={(e) => setGenFor(e.target.value)} style={{ width: "auto", fontWeight: 600 }}>
-            {camps.map((c) => <NativeSelectOption key={c.id} value={c.id}>{c.name}</NativeSelectOption>)}
+            {camps.map((c) => <NativeSelectOption key={c.id} value={c.id}>{c.is_sandbox ? "[Sandbox] " : ""}{c.name}</NativeSelectOption>)}
           </NativeSelect>
-          <details className="rowmenu">
-            <summary className="btn btn-primary" style={{ listStyle: "none", cursor: "pointer" }}>+ Generate report</summary>
-            <div className="dd">
-              {Object.entries(TYPES).map(([k, t]) => (
-                <button key={k} disabled={busy || !genFor} onClick={() => generate(k)} title={t.desc}>{t.label} — {t.desc}</button>
-              ))}
-            </div>
-          </details>
+          {selectedCampaign?.is_sandbox ? (
+            <Button disabled title="Sandbox campaigns cannot generate official reports">Official report blocked</Button>
+          ) : (
+            <details className="rowmenu">
+              <summary className="btn btn-primary" style={{ listStyle: "none", cursor: "pointer" }}>+ Generate report</summary>
+              <div className="dd">
+                {Object.entries(TYPES).map(([k, t]) => (
+                  <button key={k} disabled={busy || !genFor} onClick={() => generate(k)} title={t.desc}>{t.label} — {t.desc}</button>
+                ))}
+              </div>
+            </details>
+          )}
         </div>
       </div>
+      {selectedCampaign?.is_sandbox ? (
+        <div className="card" style={{ borderColor: "var(--amber, #b7791f)", background: "#fffaf0" }}>
+          <b>Sandbox campaign</b>
+          <p className="small muted" style={{ margin: "4px 0 0" }}>Its responses can exercise scoring, findings and AI services, but cannot produce an immutable official report.</p>
+        </div>
+      ) : null}
       {err ? <div className="err">{err}</div> : null}
 
       <div className="stats">
@@ -274,7 +289,7 @@ export default function Reports() {
           <Input type="text" placeholder="Search reports" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 220 }} />
           <NativeSelect value={fCamp} onChange={(e) => setFCamp(e.target.value)} style={{ width: "auto" }}>
             <NativeSelectOption value="all">All campaigns</NativeSelectOption>
-            {camps.map((c) => <NativeSelectOption key={c.id} value={c.id}>{c.name}</NativeSelectOption>)}
+            {camps.map((c) => <NativeSelectOption key={c.id} value={c.id}>{c.is_sandbox ? "[Sandbox] " : ""}{c.name}</NativeSelectOption>)}
           </NativeSelect>
         </div>
         {!filtered.length ? (

@@ -167,6 +167,11 @@ export default function Respond() {
   if (state === "intro") return (
     <div className="rshell"><div style={{ maxWidth: 640, margin: "40px auto" }}>
       <div className="card">
+        {data.campaign?.is_sandbox ? (
+          <div style={{ border: "1px solid var(--amber, #b7791f)", background: "#fffaf0", borderRadius: 9, padding: "9px 11px", marginBottom: 12, fontSize: 13 }}>
+            <b>Sandbox test</b> — this response is for product validation and cannot enter an official report.
+          </div>
+        ) : null}
         <div className="small muted" style={{ marginBottom: 6 }}>
           {data.org?.name} · {data.campaign?.name}
         </div>
