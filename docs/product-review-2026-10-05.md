@@ -282,7 +282,9 @@ and propagate failed comment curation writes. Existing privacy gates remain in
 place. Twelve endpoint/helper tests exercise real bundled handlers against a
 capped synthetic database, including 1,040 respondents, 2,000-answer batches,
 later-page failures, failed comment saves, missing membership and the absolute
-owner comment lock. The updated suite passes **160 tests in 18 files**; the
+owner comment lock. Three account-screen render regressions additionally verify
+password controls without membership, preference-service failure, and rejection
+of an unverifiable session. The updated suite passes **163 tests in 19 files**; the
 production build and zero-vulnerability production dependency audit pass.
 These backend code changes have **not been deployed** to Supabase.
 
