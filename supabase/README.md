@@ -3,9 +3,21 @@
 > Current status and release work are recorded in the
 > [5 October 2026 product review](../docs/product-review-2026-10-05.md).
 > The inventory and gate checklist below describe July's baseline and are
-> historical: the repository now has a lockfile and tests, but still lacks
-> several deployed operational function sources. Confirm deployed state before
+> historical: the repository now has a lockfile, tests and all seven InnoPulse
+> function sources. Confirm deployed state before
 > using this checklist as a release decision.
+
+## Current inventory (5 October 2026)
+
+The [deployed baseline inventory](function-inventory-2026-10-05.json) records
+the versions recovered during the operational review. The unrelated `attio-sync`
+function is outside this product inventory. The `fs-results` and
+`fs-responses-ops` sources now include local pagination and database-error fixes
+that have not been deployed. Their shared `query.js` must be included with any
+deployment. `tests/backend-queries.test.js` bundles the actual handler sources
+and tests complete reads and existing privacy gates against synthetic capped
+query results. Run these checks against a disposable staging backend before
+production promotion, including real role, RLS, MFA and concurrent-read cases.
 
 The frontend in this repo is only half the product. The other half runs in
 Supabase project `jydbinexjckfzjqgsmjf` (eu-west-1):
@@ -23,7 +35,7 @@ Supabase project `jydbinexjckfzjqgsmjf` (eu-west-1):
 | fs-admin   | v2  | true | Team: members list w/ emails, owner invites (inviteUserByEmail), remove |
 | fs-notify  | v1  | true | Reminder emails via Resend (owner/manager; recipients never stored) |
 
-**To export their exact source into this repo** (next Gate 0 step):
+**Historical source-export instructions** (completed for the current inventory):
 `npx supabase functions download <name> --project-ref jydbinexjckfzjqgsmjf`
 for each of the four names, committed under `supabase/functions/<name>/index.ts`.
 Secrets required at runtime: `RESEND_API_KEY` (fs-notify). The local Jev shadow

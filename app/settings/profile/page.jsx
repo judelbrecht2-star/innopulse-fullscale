@@ -33,7 +33,7 @@ const DATE_FORMATS = [["DD MMM YYYY", "13 Aug 2026"], ["YYYY-MM-DD", "2026-08-13
 const LANDING = [["/dashboard", "Overview"], ["/campaigns", "Campaigns"], ["/responses", "Responses"], ["/insights", "Insights"], ["/reports", "Reports"]];
 
 export default function ProfileSettings() {
-  const { user, org, role, memberships, prefs, loading, err, refresh, loadPrefs } = useSettings();
+  const { user, org, role, memberships, prefs, loading, authErr, prefsErr, workspaceErr, refresh, loadPrefs } = useSettings();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [p, setP] = useState(null);          // working copy of personal preferences
@@ -62,7 +62,8 @@ export default function ProfileSettings() {
   }, [prefs]);
 
   if (loading) return <LoadingCard rows={4} />;
-  if (err) return <ErrorNote>{err}</ErrorNote>;
+  if (authErr || prefsErr) return <ErrorNote>{authErr || prefsErr}</ErrorNote>;
+  if (!user) return <LoadingCard rows={4} />;
 
   /* Display name lives in fs_user_preferences — it is a personal preference,
      not organisation data. It is mirrored into auth user_metadata so anything
@@ -101,6 +102,7 @@ export default function ProfileSettings() {
       title="Profile"
       description="Who you are on this platform, and which organisation you are currently working in."
     >
+      {workspaceErr ? <Note>{workspaceErr} Your personal profile is still available.</Note> : null}
       <Section
         title="Your details"
         description="Your name appears in the audit log next to actions you take."
@@ -188,7 +190,7 @@ export default function ProfileSettings() {
         description="Everything you see — campaigns, responses, reports — is scoped to this organisation."
       >
         {memberships.length <= 1 ? (
-          <Row label="Organisation" hint="You belong to one organisation.">
+          <Row label="Organisation" hint={memberships.length ? "You belong to one organisation." : "Ask your workspace owner to add your sign-in address."}>
             <div className="text-sm font-medium">{org?.name || "—"}</div>
           </Row>
         ) : (

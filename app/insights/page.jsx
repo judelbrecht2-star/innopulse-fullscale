@@ -14,6 +14,13 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { ArrowRight, Lock, WarningTriangle } from "iconoir-react";
 import { Download } from "iconoir-react";
 
+function hiddenScoreLabel(cell, threshold) {
+  if (Number(cell.n) >= Number(threshold) || (cell.suppression_reason && cell.suppression_reason !== "below_threshold")) {
+    return "Hidden to prevent protected results from being inferred from other scores.";
+  }
+  return `Hidden until at least ${threshold} responses (privacy protection).`;
+}
+
 function FindingCard({ f }) {
   const chip = f.klass === CLASS.OBS ? "teal" : f.klass === CLASS.SUP ? "draft" : "closed";
   const dot = f.severity === 3 ? "var(--primary)" : f.severity === 2 ? "var(--amber, #b7791f)" : "var(--muted)";
@@ -337,7 +344,7 @@ export default function Insights() {
                   <TableCell>{o.n}</TableCell>
                   {o.suppressed ? (
                     <TableCell colSpan={pillars.length + 1}>
-                      <div className="lockrow"><Lock className="inline size-4 -mt-0.5" /> Hidden until at least {results?.campaign?.anonymity_threshold} responses</div>
+                      <div className="lockrow"><Lock className="inline size-4 -mt-0.5" /> {hiddenScoreLabel(o, results?.campaign?.anonymity_threshold)}</div>
                     </TableCell>
                   ) : (
                     <>
@@ -417,7 +424,7 @@ export default function Insights() {
                   <TableCell>{g.n}</TableCell>
                   {g.suppressed ? (
                     <TableCell colSpan={pillars.length + 1}>
-                      <div className="lockrow"><Lock className="inline size-4 -mt-0.5" /> Hidden until at least {results?.campaign?.anonymity_threshold} response{results?.campaign?.anonymity_threshold === 1 ? "" : "s"} (privacy protection)</div>
+                      <div className="lockrow"><Lock className="inline size-4 -mt-0.5" /> {hiddenScoreLabel(g, results?.campaign?.anonymity_threshold)}</div>
                     </TableCell>
                   ) : (
                     <>

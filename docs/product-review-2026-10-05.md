@@ -15,9 +15,10 @@ campaigns, lose the selected cycle between pages, mistake an unavailable service
 for an empty workspace, or reopen a report whose conclusions had changed.
 
 This change improves those paths while retaining the existing assessment model
-and visual identity. Production readiness still depends on restoring and
-verifying the backend, completing its source inventory, and testing database
-invariants. A successful frontend build does not establish those facts.
+and visual identity. The follow-up restored the backend and recovered its full
+InnoPulse function source inventory. Production readiness still depends on
+testing database invariants and promoting the backend fixes described below.
+A successful frontend build does not establish those facts.
 
 ## Scope and evidence
 
@@ -28,14 +29,15 @@ Inspected the hosted sign-in page and exercised signed-in screens locally using
 synthetic data, including two organisations, official and sandbox cycles, and a
 deliberately denied write. No customer responses were used for that UI testing.
 
-The connected Supabase project `jydbinexjckfzjqgsmjf`, named
+During the initial review, the connected Supabase project `jydbinexjckfzjqgsmjf`, named
 `innopulse-assessment`, reported **INACTIVE** during review. Production database
 queries, live role enforcement, email delivery, end-to-end submission and report
 creation could therefore not be validated. There was no connected Vercel
 management tool. The repository homepage identifies
 `https://innopulse-fullscale.vercel.app`; the exact deployment configuration was
-not independently verified. No database migrations or production deployment
-were performed as part of this change.
+not independently verified. The operational follow-up below supersedes these
+availability and access limitations. No schema migrations or production frontend
+deployment have been performed.
 
 ## Product model and workflows
 
@@ -108,7 +110,8 @@ Loading and service failure now have explicit states across campaign lists,
 insights, findings and responses. Missing quality aggregates no longer appear as
 healthy data. Campaign/response metadata reads paginate beyond the Data API row
 cap, so totals do not silently stop at the first page. This does not fix any
-pagination inside the deployed aggregate functions whose source is absent.
+pagination inside the deployed aggregate functions. The follow-up recovered
+that source and fixes the confirmed truncation paths locally.
 
 The overview's coverage heuristic was labelled confidence. It is now a
 **participation signal**, with an explanation that it is not statistical
@@ -224,9 +227,85 @@ plus explicit staging frontend configuration. The remaining backend work should
 be done against a restored, disposable staging project, with production promotion
 following the role/privacy/submission/report acceptance checks in the README.
 
+## Operational follow-up: restored service and account recovery
+
+Using the user's signed-in Chrome session and Supabase connection, verified
+the existing Vercel Git integration and protected branch preview. Supabase
+refused to restore InnoPulse while two other Free projects were active. With
+the user's explicit approval, paused `innovation-army-launchpad`
+(`czissngwfcpaizyzxfqs`) and restored InnoPulse. Launchpad's backend remains
+offline. InnoPulse then reported **ACTIVE_HEALTHY**, and a database readiness
+query succeeded. All 29 `fs_*` tables have RLS enabled; this is not proof that
+every policy or privileged function enforces the intended boundaries.
+
+Recovered deployed `fs-admin` v9, `fs-notify` v5, `fs-results` v16 and
+`fs-responses-ops` v10 sources into version control. Existing `fs-respond` v13,
+`fs-jev-findings` v5 and `fs-jev-interventions` v2 and their shared sources match
+deployed source after newline normalization. The inventory JSON records the
+deployed baseline, not subsequent local edits. Embedded NUL string delimiters
+were escaped as `\0` without changing their runtime meaning. The unrelated
+`attio-sync` function was excluded.
+
+The user signed into an existing account without an organisation membership.
+With explicit approval, added that account as an owner of the existing demo
+workspace, recorded the membership change in `fs_audit`, and verified the
+membership with SQL and the live Security screen. No password was entered or
+changed by the agent. The existing settings provider incorrectly made personal
+password and profile screens depend on organisation membership. The local fix
+keeps account security available when membership or preferences cannot load,
+while retaining errors and access restrictions on organisation settings.
+
+The live Auth configuration allows only two legacy custom-domain pages, while
+the app's password-reset request specifies the Vercel Security page. The
+requested callback was therefore not allowlisted and could fall back to the old
+site. With explicit approval, added only the exact production Security page
+(`https://innopulse-fullscale.vercel.app/settings/security`) to the allowlist.
+The user declined the preview callback, so password reset remains directed to
+production. UI acceptance of a reset request is not
+proof of email delivery; a complete recovery email-to-password flow still
+requires the user to finish the password submission.
+
+Live signed-in preview reads verified the two existing campaign cycles and the
+open campaign's aggregate results, comparison context and protected stakeholder
+cells. No response text was opened and no assessment submissions or reports
+were created. The live table exposed misleading copy: a five-person group was
+hidden for complementary suppression yet labelled as waiting for five people.
+The updated label explains that additional cells can be hidden to stop protected
+results being inferred from other scores.
+
+Recovered backend source confirmed two data-completeness defects: campaign
+responses were read without pagination, and batches of 40 responses could have
+2,000 answers while the Data API returned only its capped result. Local fixes
+page responses, answers, comments, groups and progress with stable ordering;
+continue through short capped pages; reject failed governance and data reads;
+and propagate failed comment curation writes. Existing privacy gates remain in
+place. Twelve endpoint/helper tests exercise real bundled handlers against a
+capped synthetic database, including 1,040 respondents, 2,000-answer batches,
+later-page failures, failed comment saves, missing membership and the absolute
+owner comment lock. The updated suite passes **160 tests in 18 files**; the
+production build and zero-vulnerability production dependency audit pass.
+These backend code changes have **not been deployed** to Supabase.
+
+Security Advisors report two extensions in `public`, five anonymous-callable
+privileged functions, 21 authenticated-callable privileged functions, 25 RLS
+tables with no policies (including unrelated legacy tables), and disabled leaked
+password protection. These findings need individual review; some privileged
+functions are deliberately used by membership-scoped RPCs and policies, so
+changing their grants indiscriminately could break the product. Remediation
+guidance: [extension placement](https://supabase.com/docs/guides/database/database-linter?lint=0014_extension_in_public),
+[anonymous privileged calls](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable),
+[signed-in privileged calls](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable),
+[RLS policies](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy),
+and [password protection](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection).
+
+Transactional submissions/consent, report immutability, real low/high-assurance
+role tests, production email delivery and backend promotion remain unverified.
+Restoring availability and adding one approved owner membership do not establish
+these broader release properties.
+
 ## Recommended product sequence
 
-1. Restore service availability and make the complete backend reproducible.
+1. Keep service availability healthy and deploy the recovered, tested backend source to staging.
 2. Validate and release the workflow/context/draft/report fixes in this change.
 3. Make submissions atomic and reports immutable, then prove role/privacy boundaries.
 4. Complete approval and action-owner workflows using those established boundaries.

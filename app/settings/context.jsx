@@ -28,14 +28,17 @@ export function SettingsProvider({ children }) {
   const [prefs, setPrefs] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const [authErr, setAuthErr] = useState("");
+  const [prefsErr, setPrefsErr] = useState("");
 
   /* Personal preferences are per-user and cross-organisation. They are loaded
      here, alongside org settings, so no page has to decide which table a given
      setting belongs to — the answer is already on screen in the shape of the
      data. */
   const loadPrefs = useCallback(async () => {
+    setPrefsErr("");
     const { data, error } = await sb().rpc("fs_user_preferences_ensure");
-    if (error) { setErr(error.message); return null; }
+    if (error) { setPrefsErr(error.message); return null; }
     const row = Array.isArray(data) ? data[0] : data;
     setPrefs(row || null);
     return row || null;
@@ -53,11 +56,21 @@ export function SettingsProvider({ children }) {
 
   const refresh = useCallback(async () => {
     setErr("");
+    setAuthErr("");
+    setPrefsErr("");
+    setUser(null);
+    setOrg(null); setRole(""); setMemberships([]); setOrgSettings(null);
+    let authenticated = false;
     try {
-    const { data } = await sb().auth.getUser();
+    const { data, error } = await sb().auth.getUser();
+    if (error) { setAuthErr(error.message); return; }
     if (!data.user) { router.replace("/login"); return; }
     setUser(data.user);
-    await loadPrefs();
+    authenticated = true;
+    // Account security remains available even if personal preferences or
+    // organisation membership cannot be loaded.
+    try { await loadPrefs(); }
+    catch (ex) { setPrefsErr(ex.message || "Could not load your preferences."); }
     const mem = await activeMembership(data.user.id);
     if (!mem) {
       setErr("Your user isn't linked to an organisation yet.");
@@ -68,7 +81,10 @@ export function SettingsProvider({ children }) {
     setRole(mem.role);
     setMemberships(mem.memberships || []);
     await loadOrgSettings(mem.org_id);
-    } catch (ex) { setErr(ex.message || "Could not load settings. Please refresh and try again."); }
+    } catch (ex) {
+      const message = ex.message || "Could not load settings. Please refresh and try again.";
+      if (authenticated) setErr(message); else setAuthErr(message);
+    }
     finally { setLoading(false); }
   }, [router, loadOrgSettings, loadPrefs]);
 
@@ -76,7 +92,7 @@ export function SettingsProvider({ children }) {
 
   const value = {
     user, org, role, memberships, orgSettings, prefs,
-    loading, err,
+    loading, err: authErr || prefsErr || err, authErr, prefsErr, workspaceErr: err,
     isOwner: role === "owner",
     canManage: role === "owner" || role === "manager",
     setOrg, setOrgSettings, setPrefs, loadOrgSettings, loadPrefs, refresh,
