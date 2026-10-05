@@ -44,7 +44,7 @@ function FindingCard({ f }) {
 function bandChip(v) { return v == null ? "" : v < 40 ? "low" : v < 70 ? "med" : "high"; }
 
 import { listOrgCampaigns } from "../lib/campaign-data";
-import { defaultCampaign, requestedCampaignId, campaignHref } from "../lib/campaign-context";
+import { defaultCampaign, requestedCampaignId, setCampaignUrl, campaignHref } from "../lib/campaign-context";
 
 import CampaignWorkflow from "../components/campaign-workflow";
 
@@ -173,7 +173,7 @@ export default function Insights() {
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           {sel ? <Link className="btn btn-ghost" href={`/campaigns/${sel}/report`}><Download className="inline size-4 -mt-0.5" /> Export report</Link> : null}
           {sel ? <Link className="btn btn-primary" href={campaignHref("/insights/interventions", sel)}>Recommended interventions <ArrowRight className="inline size-4 -mt-0.5" /></Link> : null}
-          <NativeSelect aria-label="Campaign" value={sel} onChange={(e) => setSel(e.target.value)} style={{ width: "auto", fontWeight: 600 }}>
+          <NativeSelect aria-label="Campaign" value={sel} onChange={(e) => { setCampaignUrl(e.target.value); setSel(e.target.value); }} style={{ width: "auto", fontWeight: 600 }}>
             {campaigns.map((c) => <NativeSelectOption key={c.id} value={c.id}>{c.name}</NativeSelectOption>)}
           </NativeSelect>
         </div>

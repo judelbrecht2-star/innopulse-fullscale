@@ -16,3 +16,15 @@ export function requestedCampaignId() {
   if (typeof window === "undefined") return null;
   return new URLSearchParams(window.location.search).get("campaign");
 }
+
+export function campaignSelectionHref(currentHref, campaignId) {
+  const url = new URL(currentHref);
+  if (campaignId) url.searchParams.set("campaign", campaignId);
+  else url.searchParams.delete("campaign");
+  return url.pathname + url.search + url.hash;
+}
+
+export function setCampaignUrl(campaignId) {
+  if (typeof window === "undefined") return;
+  window.history.replaceState(null, "", campaignSelectionHref(window.location.href, campaignId));
+}

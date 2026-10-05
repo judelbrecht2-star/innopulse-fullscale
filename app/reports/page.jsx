@@ -30,7 +30,7 @@ function dl(name, rows) {
 }
 
 import { listOrgCampaigns, campaignRows } from "../lib/campaign-data";
-import { defaultCampaign, requestedCampaignId } from "../lib/campaign-context";
+import { defaultCampaign, requestedCampaignId, setCampaignUrl } from "../lib/campaign-context";
 
 import CampaignWorkflow from "../components/campaign-workflow";
 
@@ -253,7 +253,7 @@ export default function Reports() {
           <p className="lead">Turn campaign findings into clear, decision-ready reports.</p>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <NativeSelect aria-label="Campaign for report" value={genFor} onChange={(e) => setGenFor(e.target.value)} style={{ width: "auto", fontWeight: 600 }}>
+          <NativeSelect aria-label="Campaign for report" value={genFor} onChange={(e) => { setCampaignUrl(e.target.value); setGenFor(e.target.value); }} style={{ width: "auto", fontWeight: 600 }}>
             {camps.map((c) => <NativeSelectOption key={c.id} value={c.id}>{c.is_sandbox ? "[Sandbox] " : ""}{c.name}</NativeSelectOption>)}
           </NativeSelect>
           {selectedCampaign?.is_sandbox ? (

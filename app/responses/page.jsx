@@ -25,7 +25,7 @@ function ago(ts) {
 function fmt(ts) { return new Date(ts).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); }
 
 import { listOrgCampaigns, campaignRows } from "../lib/campaign-data";
-import { defaultCampaign, requestedCampaignId, campaignHref } from "../lib/campaign-context";
+import { defaultCampaign, requestedCampaignId, setCampaignUrl, campaignHref } from "../lib/campaign-context";
 
 import CampaignWorkflow from "../components/campaign-workflow";
 
@@ -289,7 +289,7 @@ export default function Responses() {
           <Button variant="ghost" onClick={() => exportCsv(false)}><Download className="inline size-4 -mt-0.5" /> Export responses</Button>
           <Button disabled={!canManage} title={canManage ? "" : "Owners and managers only"}
             onClick={() => { setRemOpen((v) => !v); if (!remGroup && groups.length) setRemGroup(groups[0].id); }}>✈ Send reminders</Button>
-          <NativeSelect aria-label="Campaign" value={sel} disabled={busy} onChange={(e) => setSel(e.target.value)} style={{ width: "auto", fontWeight: 600 }}>
+          <NativeSelect aria-label="Campaign" value={sel} disabled={busy} onChange={(e) => { setCampaignUrl(e.target.value); setSel(e.target.value); }} style={{ width: "auto", fontWeight: 600 }}>
             {campaigns.map((c) => <NativeSelectOption key={c.id} value={c.id}>{c.name}</NativeSelectOption>)}
           </NativeSelect>
         </div>
