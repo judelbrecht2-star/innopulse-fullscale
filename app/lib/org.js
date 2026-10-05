@@ -31,10 +31,11 @@ export function clearOrgScopedCache() {
 
 /* All memberships for the signed-in user, newest org last. */
 export async function listMemberships(userId) {
-  const { data } = await sb()
+  const { data, error } = await sb()
     .from("fs_memberships")
     .select("role, org_id, fs_orgs(id, name)")
     .eq("user_id", userId);
+  if (error) throw new Error("Could not load your organisation membership. Check your connection and try again.");
   return (data || []).filter((m) => m.fs_orgs);
 }
 
@@ -54,5 +55,5 @@ export async function activeMembership(userId) {
 export async function switchOrg(orgId) {
   setActiveOrgId(orgId);
   clearOrgScopedCache();
-  window.location.reload(); // hard reload: no stale tenant data in memory
+  window.location.assign("/dashboard"); // clear campaign URLs from the previous org too
 }

@@ -8,11 +8,13 @@ import { bestGaps } from "../lib/gaps";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { ArrowRight, GraphUp, Group, ShieldCheck, WarningTriangle } from "iconoir-react";
-import { activeMembership } from "../lib/org";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
 const BARRIER = { sii: "Confusion", iem: "Resistance", oic: "Anxiety", ipm: "Frustration", roi: "False Starts" };
+
+import { listOrgCampaigns } from "../lib/campaign-data";
+import { defaultCampaign, requestedCampaignId, campaignHref } from "../lib/campaign-context";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -26,18 +28,14 @@ export default function Dashboard() {
 
   useEffect(() => {
     (async () => {
+      try {
       const { data: u } = await sb().auth.getUser();
       if (!u.user) { router.replace("/login"); return; }
       setUser(u.user);
-      const mem = await activeMembership(u.user.id); // P0-3: explicit active org
-      if (!mem) { setErr("Your user isn't linked to an organisation yet."); setLoading(false); return; }
+      const { campaigns: cs, membership: mem } = await listOrgCampaigns(u.user.id, "id, name, status, opens_at, closes_at, anonymity_threshold, created_at, is_sandbox");
       setOrg(mem.fs_orgs); setRole(mem.role);
-      const { data: cs } = await sb().from("fs_campaigns")
-        .select("id, name, status, opens_at, closes_at, anonymity_threshold, created_at")
-        .order("created_at", { ascending: false });
       setCampaigns(cs || []);
-      setLoading(false);
-      const target = (cs || []).find((c) => c.status === "open") || (cs || [])[0];
+      const target = defaultCampaign(cs, requestedCampaignId());
       if (target) {
         const { data: sess } = await sb().auth.getSession();
         const jwt = sess.session?.access_token;
@@ -47,15 +45,19 @@ export default function Dashboard() {
               fetch(`${FN_BASE}/fs-results?campaign_id=${target.id}&detail=1`, { headers: { Authorization: `Bearer ${jwt}` } }),
               sb().from("fs_interventions").select("*"),
             ]);
-            if (r.ok) setOverview({ campaign: target, results: await r.json(), library: lib.data || [] });
-          } catch { /* best-effort */ }
+            if (!r.ok) throw new Error("Could not load the campaign overview. Open the campaign or try again.");
+            if (lib.error) throw new Error("Could not load recommended priorities. Please try again.");
+            setOverview({ campaign: target, results: await r.json(), library: lib.data || [] });
+          } catch (ex) { setErr(ex.message || "Could not load the campaign overview."); }
         }
       }
+      setLoading(false);
+      } catch (ex) { setErr(ex.message || "Could not load your workspace. Please try again."); setLoading(false); }
     })();
   }, [router]);
 
   return (
-    <Shell active="overview" user={user}>
+    <Shell active="overview" user={user} campaignId={overview?.campaign?.id}>
       {loading ? <p className="muted">Loading…</p> : (
         <>
           <div className="crumbs"><b>Overview</b></div>
@@ -71,7 +73,7 @@ export default function Dashboard() {
             </div>
           </div>
           {err ? <div className="err">{err}</div> : null}
-          <ExecOverview data={overview} />
+          {!err ? <ExecOverview data={overview} campaigns={campaigns} canManage={role === "owner" || role === "manager"} /> : null}
         </>
       )}
     </Shell>
@@ -98,8 +100,10 @@ function Donut({ value }) {
   );
 }
 
-function ExecOverview({ data }) {
-  if (!data) return <div className="card"><p className="muted">Create a campaign to see your executive overview.</p></div>;
+function ExecOverview({ data, campaigns, canManage }) {
+  if (!data) return <div className="card"><h2>{campaigns.length ? "Your assessment is ready for its next step" : "Start your first assessment"}</h2>
+    <p className="muted">{campaigns.length ? "Open a campaign to check its setup, collect responses, and unlock results once enough people have answered." : "Set up a campaign, invite your stakeholder groups, then review results and agree on actions."}</p>
+    <Link className="btn btn-primary" href={campaigns.length ? `/campaigns/${campaigns[0].id}` : canManage ? "/campaigns/new" : "/campaigns"}>{campaigns.length ? "Open campaign" : canManage ? "Create a campaign" : "View campaigns"}</Link></div>;
   const { campaign, results, library } = data;
   const pillars = results.pillars || [];
   const overall = results.overall && !results.overall.suppressed ? results.overall : null;
@@ -151,7 +155,7 @@ function ExecOverview({ data }) {
           <p className="ovw-source">
             Data source: <b>{campaign.name}</b> only — the {campaign.status === "open" ? "currently open" : "most recent"} campaign,
             never an average across campaigns.<br />Earlier cycles appear as the trend comparison on{" "}
-            <Link href="/insights" className="ovw-inline-link">Insights</Link>, not in these numbers.
+            <Link href={campaignHref("/insights", data.campaign.id)} className="ovw-inline-link">Insights</Link>, not in these numbers.
           </p>
         </div>
         <div className="ovw-head-right">
@@ -188,10 +192,10 @@ function ExecOverview({ data }) {
                 <dd><b>{totalN}</b>{totalTarget ? <span className="ovw-meta"> of {totalTarget} targeted ({coverage}%)</span> : null}</dd>
               </div>
               <div className="ovw-row">
-                <dt>Confidence</dt>
+                <dt>Participation signal</dt>
                 <dd>
                   {confidence ? <Badge variant="secondary" data-tone={confidence === "High" ? "open" : confidence === "Medium" ? "draft" : "closed"}>{confidence}</Badge> : "—"}
-                  <span className="ovw-meta"> coverage {coverage ?? "—"}% · don&apos;t-know {dknaAvg ?? "—"}%</span>
+                  <span className="ovw-meta"> coverage {coverage ?? "—"}% · don&apos;t-know {dknaAvg ?? "—"}%<br />Coverage indicator, not statistical confidence</span>
                 </dd>
               </div>
             </dl>

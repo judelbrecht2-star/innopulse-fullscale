@@ -1,5 +1,12 @@
 # InnoPulse Full-Scale — backend source (Release Gate 0)
 
+> Current status and release work are recorded in the
+> [5 October 2026 product review](../docs/product-review-2026-10-05.md).
+> The inventory and gate checklist below describe July's baseline and are
+> historical: the repository now has a lockfile and tests, but still lacks
+> several deployed operational function sources. Confirm deployed state before
+> using this checklist as a release decision.
+
 The frontend in this repo is only half the product. The other half runs in
 Supabase project `jydbinexjckfzjqgsmjf` (eu-west-1):
 

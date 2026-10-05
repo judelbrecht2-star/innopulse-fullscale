@@ -52,6 +52,8 @@ export function SettingsProvider({ children }) {
   }, []);
 
   const refresh = useCallback(async () => {
+    setErr("");
+    try {
     const { data } = await sb().auth.getUser();
     if (!data.user) { router.replace("/login"); return; }
     setUser(data.user);
@@ -66,7 +68,8 @@ export function SettingsProvider({ children }) {
     setRole(mem.role);
     setMemberships(mem.memberships || []);
     await loadOrgSettings(mem.org_id);
-    setLoading(false);
+    } catch (ex) { setErr(ex.message || "Could not load settings. Please refresh and try again."); }
+    finally { setLoading(false); }
   }, [router, loadOrgSettings, loadPrefs]);
 
   useEffect(() => { refresh(); }, [refresh]);

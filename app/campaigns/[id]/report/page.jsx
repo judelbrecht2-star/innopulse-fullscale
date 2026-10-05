@@ -5,6 +5,7 @@ import { sb, FN_BASE } from "../../../../lib/supabase";
 import { Shell, bandWord, bandOf, groupName } from "../../../ui";
 import { bestGaps, MIN_N } from "../../../lib/gaps";
 import { evaluateFindings } from "../../../lib/findings";
+import { reportFindings } from "../../../lib/report-snapshot";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { WarningTriangle } from "iconoir-react";
@@ -25,21 +26,26 @@ function Report() {
   const [err, setErr] = useState("");
 
   useEffect(() => {
+    let cancelled = false;
+    setData(null); setSnap(null); setErr(""); setIsSandbox(null);
     (async () => {
+      try {
       const { data: u } = await sb().auth.getUser();
       if (!u.user) { router.replace("/login"); return; }
-      const { data: campaignMeta } = await sb().from("fs_campaigns").select("is_sandbox").eq("id", id).maybeSingle();
+      const { data: campaignMeta, error: campaignError } = await sb().from("fs_campaigns").select("is_sandbox").eq("id", id).maybeSingle();
+      if (campaignError || !campaignMeta) throw new Error("Campaign not found or you do not have access.");
+      if (cancelled) return;
       setIsSandbox(Boolean(campaignMeta?.is_sandbox));
       const { data: sess } = await sb().auth.getSession();
       const jwt = sess.session?.access_token;
-      try {
         if (rid) {
-          const { data: rep } = await sb().from("fs_reports").select("*").eq("id", rid).maybeSingle();
-          if (rep?.snapshot) {
-            const { data: lib } = await sb().from("fs_interventions").select("*");
+          const { data: rep, error: reportError } = await sb().from("fs_reports").select("*").eq("id", rid).eq("campaign_id", id).maybeSingle();
+          if (reportError || !rep?.snapshot) throw new Error("This saved report is unavailable. Open another version from Reports.");
+          if (cancelled) return;
+          if (rep.snapshot) {
             setSnap(rep);
             setData(rep.snapshot);
-            setLibrary(lib || []);
+            setLibrary(rep.snapshot.intervention_library || []);
             setReviewed(new Set((rep.snapshot.findings || []).map((f) => f.id)));
             return;
           }
@@ -50,11 +56,15 @@ function Report() {
           sb().from("fs_finding_reviews").select("rule_id").eq("campaign_id", id),
         ]);
         if (!r.ok) { setErr("Could not load results."); return; }
-        setData(await r.json());
+        if (lib.error || revs.error) throw lib.error || revs.error;
+        const results = await r.json();
+        if (cancelled) return;
+        setData(results);
         setLibrary(lib.data || []);
         setReviewed(new Set((revs.data || []).map((x) => x.rule_id)));
-      } catch { setErr("Could not load results."); }
+      } catch (ex) { if (!cancelled) setErr(ex.message || "Could not load results."); }
     })();
+    return () => { cancelled = true; };
   }, [id, rid, router]);
 
   if (err) return (<Shell active="campaigns"><div className="err">{err}</div></Shell>);
@@ -216,14 +226,12 @@ function Report() {
 
       {(() => {
         // Gate 1: only findings explicitly reviewed in the workbench reach the client report.
-        const all = evaluateFindings(data);
-        const findings = all.filter((f) => reviewed && reviewed.has(f.id));
-        const held = all.length - findings.length;
-        if (!findings.length) return all.length ? (
+        const { findings, held } = reportFindings(data, Boolean(snap), reviewed);
+        if (!findings.length) return held ? (
           <div className="rcard">
             <h2 style={{ margin: "0 0 8px", fontSize: 16 }}>Automatic findings</h2>
             <p className="small muted" style={{ margin: 0 }}>
-              {all.length} pattern{all.length === 1 ? "" : "s"} detected, none yet approved for reporting.
+              {held} pattern{held === 1 ? "" : "s"} detected, none yet approved for reporting.
               Findings appear here only after review in the findings workbench (Insights → Automatic findings).
             </p>
           </div>
@@ -251,7 +259,7 @@ function Report() {
 
       <div className="rcard">
         <h2 style={{ margin: "0 0 8px", fontSize: 16 }}>Recommended interventions</h2>
-        {picks.length === 0 ? <p className="small muted">No triggers fired yet.</p> : picks.map(({ entry, p, why }) => (
+        {picks.length === 0 ? <p className="small muted">{snap && !data.intervention_library ? "This earlier report did not save its intervention library. Generate a new version to include recommendations." : "No triggers fired yet."}</p> : picks.map(({ entry, p, why }) => (
           <div key={entry.id} style={{ borderTop: "1px solid var(--line)", padding: "10px 0" }}>
             <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 14 }}>
               {p.short} — {entry.trigger_type === "gap" ? "perception gap" : entry.band} <span className="muted small">({why})</span>

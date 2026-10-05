@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { ArrowRight, WarningTriangle, Rocket, Page, Group, ReportColumns, InfoCircle, WarningCircle, Search, Plus, SendMail } from "iconoir-react";
-import { activeMembership } from "../lib/org";
+import { listOrgCampaigns, campaignRows } from "../lib/campaign-data";
 import { archiveCampaign, closeCampaign, createRevisedCampaign, openCampaign, readiness } from "../lib/lifecycle";
 
 /* Respondent tokens are minted server-side by fs_create_campaign,
@@ -32,26 +32,31 @@ export default function Campaigns() {
   const [resps, setResps] = useState([]);
   const [vers, setVers] = useState({});
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [q, setQ] = useState("");
   const [fStatus, setFStatus] = useState("active");
   const [sort, setSort] = useState("newest");
 
   const load = useCallback(async () => {
+    setLoading(true); setErr("");
+    try {
     const { data: u } = await sb().auth.getUser();
     if (!u.user) { router.replace("/login"); return; }
     setUser(u.user);
-    const mem = await activeMembership(u.user.id); // P0-3
-    setRole(mem?.role || "");
-    const [{ data: cs }, { data: gs }, { data: ls }, { data: rs }, { data: vs }] = await Promise.all([
-      sb().from("fs_campaigns").select("id, org_id, name, status, opens_at, closes_at, anonymity_threshold, questionnaire_version_id, created_by, created_at, is_sandbox").order("created_at", { ascending: false }),
-      sb().from("fs_groups").select("id, campaign_id, type, label, target_n"),
-      sb().from("fs_links").select("id, campaign_id, mode, active"),
-      sb().from("fs_responses").select("id, campaign_id, group_id, submitted_at, valid"),
+    const { campaigns: cs, membership: mem } = await listOrgCampaigns(u.user.id, "id, org_id, name, status, opens_at, closes_at, anonymity_threshold, questionnaire_version_id, created_by, created_at, is_sandbox");
+    setRole(mem.role);
+    const [gs, ls, rs, versions] = await Promise.all([
+      campaignRows("fs_groups", "id, campaign_id, type, label, target_n", cs),
+      campaignRows("fs_links", "id, campaign_id, mode, active", cs),
+      campaignRows("fs_responses", "id, campaign_id, group_id, submitted_at, valid", cs),
       sb().from("fs_questionnaire_versions").select("id, version"),
     ]);
-    setCamps(cs || []); setGroups(gs || []); setLinks(ls || []); setResps(rs || []);
-    setVers(Object.fromEntries((vs || []).map((v) => [v.id, v.version])));
+    if (versions.error) throw versions.error;
+    setCamps(cs); setGroups(gs); setLinks(ls); setResps(rs);
+    setVers(Object.fromEntries((versions.data || []).map((v) => [v.id, v.version])));
+    } catch (ex) { setErr(ex.message || "Could not load campaigns. Please try again."); }
+    finally { setLoading(false); }
   }, [router]);
   useEffect(() => { load(); }, [load]);
 
@@ -159,6 +164,9 @@ export default function Campaigns() {
     { k: "Sandbox campaigns",   v: sandboxes,   Icon: InfoCircle,  tone: "blue"  },
     { k: "Needs attention",     v: attention, Icon: WarningCircle, tone: "red"   },
   ];
+
+  if (loading) return <Shell active="campaigns" user={user}><p role="status" className="muted">Loading campaigns…</p></Shell>;
+  if (err && !camps.length) return <Shell active="campaigns" user={user}><div role="alert" className="err">{err}</div><Button onClick={load}>Try again</Button></Shell>;
 
   return (
     <Shell active="campaigns" user={user}>
