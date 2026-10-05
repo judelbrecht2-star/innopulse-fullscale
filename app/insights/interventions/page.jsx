@@ -24,6 +24,8 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 export default function Interventions() {
   const router = useRouter();
   const [user, setUser] = useState(null);
+  const [team, setTeam] = useState([]);
+  const [role, setRole] = useState("");
   const [campaigns, setCampaigns] = useState([]);
   const [selCampaign, setSelCampaign] = useState("");
   const [campaign, setCampaign] = useState(null);
@@ -54,8 +56,11 @@ export default function Interventions() {
         const { data: u } = await sb().auth.getUser();
         if (!u.user) { router.replace("/login"); return; }
         setUser(u.user);
-        const { campaigns: cs } = await listOrgCampaigns(u.user.id, "id, name, status, created_at, is_sandbox");
-        setCampaigns(cs);
+        const { campaigns: cs, membership } = await listOrgCampaigns(u.user.id, "id, name, status, created_at, is_sandbox");
+        setCampaigns(cs); setRole(membership.role);
+        const directory = await sb().rpc("fs_team_directory", { p_org: membership.org_id });
+        if (directory.error) throw directory.error;
+        setTeam(directory.data || []);
         const target = defaultCampaign(cs, requestedCampaignId());
         if (!target) { setErr("No campaigns yet. Create a campaign and collect responses before planning actions."); return; }
         setSelCampaign(target.id);
@@ -140,6 +145,7 @@ export default function Interventions() {
 
   async function saveChange(work) {
     if (busy) return;
+    if (!["owner","manager","analyst"].includes(role)) { setSaveError("Your role can view the plan. Ask an assessment team member to update it."); return; }
     setBusy(true); setSaveError("");
     try { await work(); await loadActions(campaign.id); }
     catch (ex) { setSaveError("Could not confirm your changes were saved. " + (ex.message || "Please try again.")); }
@@ -182,7 +188,8 @@ export default function Interventions() {
   async function saveOwner() {
     if (!curEntry) return;
     await saveChange(async () => {
-      for (let i = 0; i < (curEntry.actions || []).length; i++) await ensureRow(i, { owner: ownerEdit?.trim() || null });
+      const { error } = await sb().rpc("fs_assign_intervention", { p_campaign: campaign.id, p_intervention: curEntry.id, p_assignee: ownerEdit || null });
+      if (error) throw error;
       setOwnerEdit(null);
     });
   }
@@ -394,12 +401,13 @@ export default function Interventions() {
           <div>
             <div className="card">
               <h2>Execution plan</h2>
+              <p className="small"><Link href="/actions">Manage due dates and progress in My actions →</Link></p>
               <div className="kv"><span className="k"><I.person />Owner</span>
                 {ownerEdit === null ? (
                   <span>{savedOwner || curEntry.owner_suggestion}</span>
                 ) : (
                   <span style={{ display: "flex", gap: 6, flex: 1 }}>
-                    <Input type="text" value={ownerEdit} onChange={(e) => setOwnerEdit(e.target.value)} placeholder={curEntry.owner_suggestion} />
+                    <select className="completion-select" aria-label="Action owner" value={ownerEdit} onChange={(e) => setOwnerEdit(e.target.value)}><option value="">Unassigned</option>{team.filter(t => ["owner","manager","analyst"].includes(t.role)).map(t => <option key={t.user_id} value={t.user_id}>{t.label}</option>)}</select>
                     <Button size="sm" disabled={busy} onClick={saveOwner}>Save</Button>
                   </span>
                 )}
@@ -413,7 +421,7 @@ export default function Interventions() {
                 {(curEntry.services || []).map((s, i) => <span className="tagchip" key={i}>{s}</span>)}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <Button size="sm" onClick={() => setOwnerEdit(savedOwner || "")}>Assign owner</Button>
+                <Button size="sm" disabled={!["owner","manager","analyst"].includes(role)} onClick={() => setOwnerEdit(actions.find(a => a.intervention_id === curEntry.id)?.assigned_to || "")}>Assign owner</Button>
                 {msEdit === null ? (
                   <Button variant="ghost" size="sm" onClick={() => setMsEdit("")}>⚑ Add milestone</Button>
                 ) : (

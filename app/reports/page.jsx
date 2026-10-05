@@ -16,6 +16,9 @@ import { Badge } from "@/components/ui/badge";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Check } from "iconoir-react";
 
+import ReportDecisions from "../components/report-decisions";
+import { acceptedFindings, safeBranding, canEdit, REPORT_STATES } from "../lib/completion";
+
 const TYPES = {
   executive: { label: "Executive", pill: "violet", desc: "Board-ready web report (print / save as PDF)" },
   findings_csv: { label: "Findings", pill: "teal", desc: "Automatic findings with evidence, CSV" },
@@ -37,6 +40,8 @@ import CampaignWorkflow from "../components/campaign-workflow";
 export default function Reports() {
   const router = useRouter();
   const [user, setUser] = useState(null);
+  const [role, setRole] = useState("");
+  const [orgId, setOrgId] = useState(null);
   const [camps, setCamps] = useState([]);
   const [reports, setReports] = useState([]);
   const [interps, setInterps] = useState([]);
@@ -56,12 +61,13 @@ export default function Reports() {
       const { data: u } = await sb().auth.getUser();
       if (!u.user) { router.replace("/login"); return; }
       setUser(u.user);
-      const { campaigns: cs } = await listOrgCampaigns(u.user.id, "id, name, status, created_at, client_context, engagement_objective, prior_campaign_id, is_sandbox");
+      const { campaigns: cs, membership } = await listOrgCampaigns(u.user.id, "id, name, status, created_at, client_context, engagement_objective, prior_campaign_id, is_sandbox");
       const [rs, ip] = await Promise.all([
         campaignRows("fs_reports", "*", cs),
         sb().from("fs_interpretations").select("scope, band, body, version"),
       ]);
       if (ip.error) throw ip.error;
+      setRole(membership.role); setOrgId(membership.org_id);
       setCamps(cs); setReports(rs.sort((a,b) => new Date(b.created_at)-new Date(a.created_at))); setInterps(ip.data || []);
       setGenFor((current) => defaultCampaign(cs, current || requestedCampaignId())?.id || "");
     } catch (ex) { setErr(ex.message || "Could not load reports. Please try again."); }
@@ -92,19 +98,15 @@ export default function Reports() {
 
   async function saveContent() {
     setBusy(true); setSaved(false); setErr("");
-    const { error: e1 } = await sb().from("fs_campaigns").update({
-      client_context: content.client_context.trim() || null,
-      engagement_objective: content.engagement_objective.trim() || null,
-    }).eq("id", genFor);
-    let e2 = null;
-    for (const [pid] of PILLARS) {
-      const body = (notes[pid] || "").trim();
-      const { error } = await sb().from("fs_pillar_notes").upsert(
-        { campaign_id: genFor, pillar: pid, body, updated_at: new Date().toISOString() },
-        { onConflict: "campaign_id,pillar" });
-      if (error) e2 = error;
-    }
-    if (e1 || e2) setErr((e1 || e2).message); else { setSaved(true); setTimeout(() => setSaved(false), 2000); }
+    try {
+      const { error } = await sb().rpc("fs_save_report_content", {
+        p_campaign: genFor, p_context: content.client_context.trim(),
+        p_objective: content.engagement_objective.trim(), p_notes: notes,
+      });
+      if (error) throw error;
+      setSaved(true);
+      setCamps(cs => cs.map(c => c.id === genFor ? { ...c, ...content } : c));
+    } catch (ex) { setErr(ex.message || "Your report content could not be saved. Keep a copy and try again."); }
     setBusy(false);
   }
 
@@ -113,11 +115,6 @@ export default function Reports() {
     const r = await fetch(`${FN_BASE}/fs-results?campaign_id=${cid}&detail=1`, { headers: { Authorization: `Bearer ${sess.session?.access_token}` } });
     if (!r.ok) throw new Error("Could not load campaign results.");
     return r.json();
-  }
-
-  async function sha256(s) {
-    const h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
-    return Array.from(new Uint8Array(h), (b) => b.toString(16).padStart(2, "0")).join("");
   }
 
   // Gate 1: generation freezes a snapshot. Downloads render from the snapshot,
@@ -137,18 +134,18 @@ export default function Reports() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess2.session?.access_token}` },
         body: JSON.stringify({ action, campaign_id: genFor }),
       }).then(async (r) => { if (!r.ok) throw new Error("Could not load report evidence. Please retry before generating a report."); return r.json(); });
-      const [reviewRows, noteRows, vb, th, interventionRows] = await Promise.all([
-        sb().from("fs_finding_reviews").select("rule_id, note_contradictory, note_alternative").eq("campaign_id", genFor),
+      const [reviewRows, noteRows, vb, th, interventionRows, actionRows, brandingRows] = await Promise.all([
+        sb().from("fs_finding_reviews").select("*").eq("campaign_id", genFor),
         sb().from("fs_pillar_notes").select("pillar, body").eq("campaign_id", genFor),
         opsCall("report_comments"),
         opsCall("theme_summary"),
         sb().from("fs_interventions").select("*"),
+        campaignRows("fs_actions", "*", [selectedCampaign]).then(data => ({ data })),
+        sb().from("fs_org_settings").select("branding").eq("org_id", orgId).maybeSingle(),
       ]);
-      if (reviewRows.error || noteRows.error || interventionRows.error) throw reviewRows.error || noteRows.error || interventionRows.error;
+      if (reviewRows.error || noteRows.error || interventionRows.error || actionRows.error || brandingRows.error) throw reviewRows.error || noteRows.error || interventionRows.error || actionRows.error || brandingRows.error;
       const revs = reviewRows.data, pn = noteRows.data;
-      const revMap = Object.fromEntries((revs || []).map((x) => [x.rule_id, x]));
-      const findings = evaluateFindings(d).filter((f) => revMap[f.id])
-        .map((f) => ({ ...f, analyst: { contradictory: revMap[f.id].note_contradictory || null, alternative: revMap[f.id].note_alternative || null } }));
+      const findings = acceptedFindings(evaluateFindings(d), revs || []);
       const cRow = camps.find((x) => x.id === genFor);
       // Step 5: cycle-over-cycle trend, frozen into the snapshot
       let trend = null;
@@ -160,7 +157,9 @@ export default function Reports() {
         campaign: d.campaign, org: d.org, pillars: d.pillars, groups: d.groups,
         overall: d.overall, questions: d.questions || null,
         findings, rulebook: "v1.1", engine: "shared-gaps-v1",
-        snapshot_version: 2,
+        snapshot_version: 3,
+        branding: safeBranding(brandingRows.data?.branding),
+        actions: actionRows.data || [],
         intervention_library: interventionRows.data || [],
         interpretations: interps,
         segments: d.segments || null,
@@ -173,14 +172,10 @@ export default function Reports() {
         comment_themes: th.themes || [],
         comment_meta: { commenters: th.commenters ?? null, respondents: th.respondents ?? null },
       };
-      const body = JSON.stringify(snapshot);
-      const checksum = await sha256(body);
-      const prior = reports.filter((r) => r.campaign_id === genFor && r.rtype === rtype);
-      const version = prior.length ? Math.max(...prior.map((r) => r.version || 1)) + 1 : 1;
-      const title = `${campName(genFor)} — ${TYPES[rtype].label} report v${version}`;
+      // The database allocates the version, authorship and checksum atomically.
       const { data: ins, error } = await sb().from("fs_reports").insert({
-        campaign_id: genFor, title, rtype, created_by: user.id,
-        snapshot, version, checksum, questionnaire_version: d.questionnaire_version || null,
+        campaign_id: genFor, rtype, snapshot,
+        questionnaire_version: d.questionnaire_version || null,
       }).select("*").single();
       if (error) throw new Error(error.message);
       await load();
@@ -256,7 +251,7 @@ export default function Reports() {
           <NativeSelect aria-label="Campaign for report" value={genFor} onChange={(e) => { setCampaignUrl(e.target.value); setGenFor(e.target.value); }} style={{ width: "auto", fontWeight: 600 }}>
             {camps.map((c) => <NativeSelectOption key={c.id} value={c.id}>{c.is_sandbox ? "[Sandbox] " : ""}{c.name}</NativeSelectOption>)}
           </NativeSelect>
-          {selectedCampaign?.is_sandbox ? (
+          {!canEdit(role) ? <span className="small muted">Approved report access</span> : selectedCampaign?.is_sandbox ? (
             <Button disabled title="Sandbox campaigns cannot generate official reports">Official report blocked</Button>
           ) : (
             <details className="rowmenu">
@@ -279,13 +274,13 @@ export default function Reports() {
       {err ? <div className="err">{err}</div> : null}
 
       <div className="stats">
-        <div className="stat"><span className="ic c-green"><I.doc /></span><div><div className="k">Ready to share</div><div className="v">{reports.length}</div><span className="small muted">across {new Set(reports.map((r) => r.campaign_id)).size} campaign{new Set(reports.map((r) => r.campaign_id)).size === 1 ? "" : "s"}</span></div></div>
+        <div className="stat"><span className="ic c-green"><I.doc /></span><div><div className="k">Approved to share</div><div className="v">{reports.filter(r => ["approved","issued"].includes(r.approval_state)).length}</div><span className="small muted">across {new Set(reports.map((r) => r.campaign_id)).size} campaign{new Set(reports.map((r) => r.campaign_id)).size === 1 ? "" : "s"}</span></div></div>
         <div className="stat"><span className="ic c-violet"><I.chart /></span><div><div className="k">Executive reports</div><div className="v">{reports.filter((r) => r.rtype === "executive").length}</div></div></div>
         <div className="stat"><span className="ic c-teal"><I.shield /></span><div><div className="k">Evidence packs</div><div className="v">{reports.filter((r) => r.rtype !== "executive").length}</div></div></div>
-        <div className="stat"><span className="ic c-grey"><I.info /></span><div><div className="k">Scheduled delivery</div><div className="v" style={{ fontSize: 16 }}>planned</div><span className="small muted">arrives with recurring cycles</span></div></div>
+        <div className="stat"><span className="ic c-grey"><I.info /></span><div><div className="k">Awaiting approval</div><div className="v">{reports.filter(r => r.approval_state === "pending").length}</div><span className="small muted">owner or manager decision</span></div></div>
       </div>
 
-      <details className="card">
+      {canEdit(role) ? <details className="card">
         <summary style={{ cursor: "pointer", fontWeight: 800, fontSize: 16 }}>
           Report content — client context, objectives &amp; pillar summaries
           <span className="small muted" style={{ marginLeft: 10, fontWeight: 500 }}>authored once per campaign, included in every generated report</span>
@@ -309,7 +304,7 @@ export default function Reports() {
             {saved ? <span className="small" style={{ color: "var(--green, #2f855a)", marginLeft: 10 }}>Saved <Check className="inline size-4 -mt-0.5" /></span> : null}
           </div>
         </div>
-      </details>
+      </details> : null}
 
       <div className="card">
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
@@ -331,7 +326,7 @@ export default function Reports() {
                   <TableCell><b>{r.title}</b><div className="small muted">{TYPES[r.rtype]?.desc}{r.checksum ? ` · snapshot ${r.checksum.slice(0, 8)}` : " · legacy (live data)"}</div></TableCell>
                   <TableCell className="small">{campName(r.campaign_id)}</TableCell>
                   <TableCell><span className={"pill " + (TYPES[r.rtype]?.pill || "draft")}>{TYPES[r.rtype]?.label || r.rtype}</span></TableCell>
-                  <TableCell><Badge variant="secondary" data-tone="open">Ready</Badge></TableCell>
+                  <TableCell><ReportDecisions report={r} role={role} onSaved={load} /></TableCell>
                   <TableCell className="small muted">{new Date(r.created_at).toLocaleDateString()}</TableCell>
                   <TableCell style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                     <Button size="sm" onClick={() => open(r)}>{r.rtype === "executive" ? "View" : "Download"}</Button>{" "}
@@ -340,7 +335,7 @@ export default function Reports() {
                         onClick={async () => { setBusy(true); try { await generateWordReport(r, r.snapshot?.interpretations || interps); } catch (e) { setErr(String(e.message || e)); } setBusy(false); }}>
                         Word (.docx)</Button>{" "}</>
                     ) : null}
-                    <Button variant="ghost" size="sm" disabled={busy} onClick={() => remove(r.id)}>Remove</Button>
+                    {canEdit(role) && !["approved","issued"].includes(r.approval_state) ? <Button variant="ghost" size="sm" disabled={busy} onClick={() => remove(r.id)}>Remove</Button> : null}
                   </TableCell>
                 </TableRow>
               ))}
@@ -350,8 +345,7 @@ export default function Reports() {
         <p className="small muted" style={{ marginTop: 10 }}>
           Each generated report is an immutable, checksummed snapshot — re-downloading the same
           version always yields identical content, and only findings approved in the review
-          workbench are included. New responses require generating a new version. Scheduled
-          recurring delivery is planned alongside multi-cycle trend reports.
+          workbench are included. New responses or requested content changes require generating a new version. Approve a version before opening its client presentation.
         </p>
       </div>
     </Shell>

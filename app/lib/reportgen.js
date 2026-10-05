@@ -7,6 +7,7 @@ import {
 } from "docx";
 import { bestGaps, MIN_N } from "./gaps";
 import { donutChart, distBarChart, pillarDistribution } from "./charts";
+import { safeBranding, REPORT_STATES } from "./completion";
 
 const INK = "17171A", CORAL = "E8332E", TEAL = "0E8C8C", GREY = "6D6D76", LINE = "D9D9DE", AMBER = "B7791F", GREEN = "2F855A";
 const GROUP_LBL = { executive: "Executives", employee: "Employees", customer: "Customers", partner: "Partners", other: "Other" };
@@ -116,6 +117,7 @@ const REFS = [
 // snap: fs_reports row (with .snapshot); interps: [{scope,band,body}]
 export async function generateWordReport(rep, interps) {
   const s = rep.snapshot;
+  const branding = safeBranding(s.branding);
   const interp = (scope, v) => interps.find((x) => x.scope === scope && x.band === bandOf(v))?.body || "";
   const pillars = s.pillars || [];
   const groups = s.groups || [];
@@ -131,16 +133,24 @@ export async function generateWordReport(rep, interps) {
   const smalls = visible.filter((g) => g.n < MIN_N);
 
   const b = [];
+  if (branding.logo) b.push(new Paragraph({ children: [new ImageRun({ data: png(branding.logo), transformation: { width: 180, height: 75 } })] }));
   // ---- cover ----
-  b.push(new Paragraph({ spacing: { before: 2200, after: 60 }, children: [new TextRun({ text: "INNOPULSE FULL-SCALE", bold: true, color: CORAL, size: 24, characterSpacing: 40 })] }));
+  b.push(new Paragraph({ spacing: { before: 2200, after: 60 }, children: [new TextRun({ text: "INNOPULSE FULL-SCALE", bold: true, color: branding.accent.slice(1), size: 24, characterSpacing: 40 })] }));
   b.push(new Paragraph({ spacing: { after: 60 }, children: [new TextRun({ text: "Corporate Innovation Diagnostic", bold: true, color: INK, size: 56 })] }));
   b.push(P("A multi-stakeholder assessment of perceived innovation capability, alignment and experience.", { s: 23, c: "44444a", after: 140, i: true }));
   b.push(P(`${s.org?.name || ""} — ${s.campaign?.name || ""}`, { s: 28, c: "44444a", after: 260 }));
+  b.push(P(`${REPORT_STATES[rep.approval_state] || "Legacy version"}${["approved","issued"].includes(rep.approval_state) ? " · Approved content" : " · Internal review"}`, { b: true, c: GREY, s: 20 }));
   b.push(P(`Report version v${rep.version} · generated ${new Date(s.generated_at).toLocaleDateString()} · snapshot ${String(rep.checksum || "").slice(0, 12)}`, { c: GREY, s: 20 }));
   b.push(P(`Questionnaire ${rep.questionnaire_version ? "v" + rep.questionnaire_version : ""} · findings rulebook ${s.rulebook} · anonymity threshold ${s.campaign?.anonymity_threshold}`, { c: GREY, s: 20 }));
   b.push(P("Assessment type: Diagnostic — survey (perception) evidence only. It reports how stakeholders experience the innovation system; it is not an audit and does not certify conformity with any standard. A Verified Innovation Audit — adding interviews, documents and operational records — is available as a follow-on engagement.", { c: GREY, s: 19 }));
   b.push(P("CONFIDENTIAL — prepared by The Growth System. Results are reported for stakeholder groups only; no individual is identifiable in this document.", { c: GREY, s: 19, i: true, after: 0 }));
   b.push(new Paragraph({ children: [new PageBreak()] }));
+
+  if (s.actions?.length) {
+    b.push(H("Agreed action plan"));
+    s.actions.forEach(a => { b.push(P(a.title, { b: true })); b.push(P((a.owner || "Owner to be agreed") + " · " + (a.due_on ? "Due " + a.due_on : "Date to be agreed") + " · " + a.status.replaceAll("_", " "), { s: 19, c: GREY })); if(a.notes)b.push(P(a.notes)); });
+    b.push(new Paragraph({ children: [new PageBreak()] }));
+  }
 
   // ---- decision brief (two pages for the board) ----
   b.push(H("Decision brief"));
@@ -432,7 +442,7 @@ export async function generateWordReport(rep, interps) {
     styles: { default: { document: { run: { font: "Calibri", size: 21, color: INK } } } },
     sections: [{
       properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1100, bottom: 1100, left: 1250, right: 1250 } } },
-      footers: { default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: `${s.org?.name || ""} · Corporate Innovation Diagnostic v${rep.version} · CONFIDENTIAL · page `, size: 16, color: GREY }), new TextRun({ children: [PageNumber.CURRENT], size: 16, color: GREY })] })] }) },
+      footers: { default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: `${branding.footer || s.org?.name || "InnoPulse"} · Corporate Innovation Diagnostic v${rep.version} · CONFIDENTIAL · page `, size: 16, color: GREY }), new TextRun({ children: [PageNumber.CURRENT], size: 16, color: GREY })] })] }) },
       children: b,
     }],
   });

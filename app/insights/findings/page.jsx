@@ -14,6 +14,8 @@ import { Badge } from "@/components/ui/badge";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { ArrowRight, Check, Download } from "iconoir-react";
 
+import FindingDecision from "../../components/finding-decision";
+
 const PRI = { 3: "P3 · Urgent", 2: "P2 · Material", 1: "P1 · Monitor" };
 const PRIC = { 3: "var(--primary)", 2: "var(--amber, #b7791f)", 1: "var(--muted)" };
 const ISO_LABEL = { 4: "Context", 5: "Leadership", 6: "Planning", 7: "Support", 8: "Operation", 9: "Performance evaluation", 10: "Improvement" };
@@ -58,6 +60,7 @@ export default function FindingsWorkbench() {
   const router = useRouter();
   const [initialLoading, setInitialLoading] = useState(true);
   const [user, setUser] = useState(null);
+  const [role, setRole] = useState("");
   const [campaigns, setCampaigns] = useState([]);
   const [sel, setSel] = useState("");
   const [results, setResults] = useState(null);
@@ -82,8 +85,8 @@ export default function FindingsWorkbench() {
       const { data: u } = await sb().auth.getUser();
       if (!u.user) { router.replace("/login"); return; }
       setUser(u.user);
-      const { campaigns: cs } = await listOrgCampaigns(u.user.id, "id, name, status, created_at, is_sandbox");
-      setCampaigns(cs || []);
+      const { campaigns: cs, membership } = await listOrgCampaigns(u.user.id, "id, name, status, created_at, is_sandbox");
+      setCampaigns(cs || []); setRole(membership.role);
       const target = defaultCampaign(cs, requestedCampaignId());
       if (target) setSel(target.id);
       } catch (ex) { setErr(ex.message || "Could not load your workspace. Please try again."); }
@@ -100,7 +103,7 @@ export default function FindingsWorkbench() {
     try {
       const [r, reviewResponse] = await Promise.all([
         fetch(`${FN_BASE}/fs-results?campaign_id=${cid}&detail=1`, { signal, headers: { Authorization: `Bearer ${jwt}` } }),
-        sb().from("fs_finding_reviews").select("rule_id, reviewed_at, note_contradictory, note_alternative").eq("campaign_id", cid),
+        sb().from("fs_finding_reviews").select("*").eq("campaign_id", cid),
       ]);
       if (signal?.aborted) return;
       if (!r.ok) throw new Error("Could not load results.");
@@ -193,7 +196,7 @@ export default function FindingsWorkbench() {
         { onConflict: "campaign_id,rule_id" });
     }
     if (response.error) throw response.error;
-    const { data: revs, error } = await sb().from("fs_finding_reviews").select("rule_id, reviewed_at, note_contradictory, note_alternative").eq("campaign_id", sel);
+    const { data: revs, error } = await sb().from("fs_finding_reviews").select("*").eq("campaign_id", sel);
     if (error) throw error;
     setReviews(Object.fromEntries((revs || []).map((x) => [x.rule_id, x])));
     } catch (ex) { setSaveError("Could not confirm the review was saved. " + (ex.message || "Please try again.")); }
@@ -205,7 +208,7 @@ export default function FindingsWorkbench() {
     if ((reviews[f.id]?.[field] || null) === v) return;
     setSaveError("");
     try {
-    const { error } = await sb().from("fs_finding_reviews").update({ [field]: v }).eq("campaign_id", sel).eq("rule_id", f.id);
+    const { error } = await sb().from("fs_finding_reviews").update({ [field]: v }).eq("campaign_id", sel).eq("rule_id", f.id).select("id").single();
     if (error) throw error;
     setReviews((rv) => ({ ...rv, [f.id]: { ...rv[f.id], [field]: v } }));
     } catch (ex) { setSaveError("This note could not be saved. Keep a copy and try again. " + (ex.message || "")); }
@@ -332,7 +335,7 @@ export default function FindingsWorkbench() {
                       <span style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                         <span style={{ width: 8, height: 8, borderRadius: "50%", background: PRIC[f.severity], flex: "0 0 8px" }} />
                         <b style={{ fontSize: 13.5, flex: 1, minWidth: 140 }}>{f.title}</b>
-                        {reviews[f.id] ? <Badge variant="secondary" data-tone="open"><Check className="inline size-4 -mt-0.5" /></Badge> : null}
+                        {reviews[f.id] ? <Badge variant="secondary" data-tone={reviews[f.id].decision === "rejected" ? "closed" : "open"}>{reviews[f.id].decision}</Badge> : null}
                       </span>
                       <span className="small muted" style={{ display: "block", marginTop: 3 }}>
                         {f.klass} · {f.confidence}{f.iso ? ` · ISO ${f.iso}` : ""}
@@ -458,7 +461,7 @@ export default function FindingsWorkbench() {
                           </div>
                         ))}
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-                          <Link className="btn btn-primary btn-sm" href="/insights/interventions">Review in intervention workspace</Link>
+                          <Link className="btn btn-primary btn-sm" href={campaignHref("/insights/interventions", sel)}>Review in intervention workspace</Link>
                           <Button size="sm" variant="ghost" onClick={() => matchApprovedInterventions(active)}>Run again</Button>
                         </div>
                         <div className="small muted" style={{ marginTop: 7 }}>Model {result.model} · schema {result.schema_version}{result.latency_ms != null ? ` · ${result.latency_ms} ms` : ""}</div>
@@ -469,12 +472,11 @@ export default function FindingsWorkbench() {
               })()}
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <Link className="btn btn-primary btn-sm" href="/insights/interventions"><ArrowRight className="inline size-4 -mt-0.5" /> Add to intervention roadmap</Link>
-                <Button variant="ghost" size="sm" disabled={busy} onClick={() => toggleReview(active)}>
-                  {reviews[active.id] ? <><Check className="inline size-4 -mt-0.5" /> Reviewed — undo</> : "Mark reviewed"}
-                </Button>
+                <Link className="btn btn-primary btn-sm" href={campaignHref("/insights/interventions", sel)}><ArrowRight className="inline size-4 -mt-0.5" /> Add to intervention roadmap</Link>
+
                 {sel ? <Link className="btn btn-ghost btn-sm" href={`/campaigns/${sel}/report`}>View in report</Link> : null}
               </div>
+              <FindingDecision finding={active} review={reviews[active.id]} campaign={sel} user={user} role={role} onSaved={row => setReviews(rv => ({ ...rv, [active.id]: row }))} />
               {reviews[active.id] ? (
                 <>
                   <p className="small muted" style={{ marginTop: 8 }}>Reviewed {new Date(reviews[active.id].reviewed_at).toLocaleString()}</p>
@@ -483,11 +485,11 @@ export default function FindingsWorkbench() {
                     <label className="f">Contradictory evidence <span className="muted small">(what pushes against this conclusion?)</span></label>
                     <Textarea key={active.id + "_c"} maxLength={600} defaultValue={reviews[active.id].note_contradictory || ""}
                       placeholder="e.g. Two customer comments describe fast idea turnaround, which cuts against the visibility pattern."
-                      onBlur={(e) => saveNote(active, "note_contradictory", e.target.value)} style={{ minHeight: 64 }} />
+                      readOnly={!["owner","manager","analyst"].includes(role)} onBlur={(e) => { if (["owner","manager","analyst"].includes(role)) saveNote(active, "note_contradictory", e.target.value); }} style={{ minHeight: 64 }} />
                     <label className="f" style={{ marginTop: 8 }}>Alternative explanation <span className="muted small">(your reading, beyond the rule&apos;s own alternatives)</span></label>
                     <Textarea key={active.id + "_a"} maxLength={600} defaultValue={reviews[active.id].note_alternative || ""}
                       placeholder="e.g. The survey ran during retrenchment consultations — scores may reflect general anxiety rather than the innovation system."
-                      onBlur={(e) => saveNote(active, "note_alternative", e.target.value)} style={{ minHeight: 64 }} />
+                      readOnly={!["owner","manager","analyst"].includes(role)} onBlur={(e) => { if (["owner","manager","analyst"].includes(role)) saveNote(active, "note_alternative", e.target.value); }} style={{ minHeight: 64 }} />
                     <p className="small muted" style={{ margin: "6px 0 0" }}>Saved automatically when you click away.</p>
                   </div>
                 </>

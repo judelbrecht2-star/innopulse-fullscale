@@ -1,238 +1,112 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { sb } from "../../../lib/supabase";
 import { Shell } from "../../ui";
-import { DEMO_DIMS } from "../../lib/demographics";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { activeMembership } from "../../lib/org";
-
-const GROUP_DEFS = [
-  { type: "executive", label: "Executives & leadership", hint: "Board, exco, senior leaders", def: 5 },
-  { type: "employee", label: "Employees", hint: "Staff across departments", def: 20 },
-  { type: "customer", label: "Customers", hint: "Clients who experience your innovation", def: 10 },
-  { type: "partner", label: "Service providers & partners", hint: "Suppliers, consultants, ecosystem", def: 5 },
-  { type: "other", label: "Other stakeholders", hint: "Board, unions, regulators, community — answers the outward-facing questions", def: 5, off: true },
-];
-
-function randToken() {
-  const b = new Uint8Array(8);
-  crypto.getRandomValues(b);
-  return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
-}
+import SetupWizard from "../../components/setup-wizard";
 
 export default function NewCampaign() {
   const router = useRouter();
-  const [user, setUser] = useState(null);
-  const [org, setOrg] = useState(null);
-  const [role, setRole] = useState("");
-  const [name, setName] = useState("");
-  const [days, setDays] = useState(30);
-  const [threshold, setThreshold] = useState(5);
-  const [isSandbox, setIsSandbox] = useState(false);
-  const [groups, setGroups] = useState(
-    Object.fromEntries(GROUP_DEFS.map((g) => [g.type, { on: !g.off, target: g.def, label: g.label }]))
-  );
-  const [versions, setVersions] = useState([]);
-  const [verId, setVerId] = useState("");
-  const [err, setErr] = useState("");
-  const [busy, setBusy] = useState(false);
-  // Demographics: tick which details to record; custom dims take a comma-separated list
-  const [demoOn, setDemoOn] = useState({});
-  const [demoCustom, setDemoCustom] = useState({});
-
+  const [state, setState] = useState({
+    loading: true,
+    error: "",
+    user: null,
+    membership: null,
+    versions: [],
+    settings: {},
+  });
   useEffect(() => {
+    let alive = true;
     (async () => {
       try {
-      const { data: u } = await sb().auth.getUser();
-      if (!u.user) { router.replace("/login"); return; }
-      setUser(u.user);
-      const mem = await activeMembership(u.user.id); // P0-3
-      if (!mem) throw new Error("Your account is not linked to an organisation. Ask your workspace owner to add you.");
-      setOrg(mem.fs_orgs); setRole(mem.role);
-      // F3: campaigns choose their questionnaire version — no more hardcoded v1.0
-      const { data: vs, error: versionError } = await sb().from("fs_questionnaire_versions")
-        .select("id, version").order("created_at", { ascending: false });
-      if (versionError) throw versionError;
-      setVersions(vs || []);
-      if (vs && vs.length) setVerId(vs[0].id);
-      } catch (ex) { setErr(ex.message || "Could not load campaign setup."); }
-    })();
-  }, [router]);
-
-  const canCreate = role === "owner" || role === "manager";
-
-  async function create(e) {
-    e.preventDefault();
-    setErr("");
-    if (busy || !org || !canCreate) return;
-    const chosen = GROUP_DEFS.filter((g) => groups[g.type].on);
-    if (!name.trim()) { setErr("Give the campaign a name."); return; }
-    if (chosen.length === 0) { setErr("Choose at least one stakeholder group."); return; }
-    if (!verId) { setErr("Choose a questionnaire version."); return; }
-    // Build demographics config from ticked dimensions
-    const demoConf = [];
-    for (const d of DEMO_DIMS) {
-      if (!demoOn[d.id]) continue;
-      let options = d.options;
-      if (d.custom) {
-        options = String(demoCustom[d.id] || "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, 20);
-        if (d.id === "language" && options.length === 0) options = d.options; // sensible default list
-        if (options.length < 2) { setErr(`"${d.label}": list at least 2 options (comma-separated).`); return; }
+        const { data, error } = await sb().auth.getUser();
+        if (error) throw error;
+        if (!data.user) {
+          router.replace("/login");
+          return;
+        }
+        const membership = await activeMembership(data.user.id);
+        if (!membership)
+          throw new Error("Ask your workspace owner to add your account.");
+        const [v, s] = await Promise.all([
+          sb()
+            .from("fs_questionnaire_versions")
+            .select("id,version")
+            .order("created_at", { ascending: false }),
+          sb()
+            .from("fs_org_settings")
+            .select(
+              "default_campaign_duration_days,default_score_threshold,default_comment_threshold,default_questionnaire_version_id",
+            )
+            .eq("org_id", membership.org_id)
+            .maybeSingle(),
+        ]);
+        if (v.error || s.error) throw v.error || s.error;
+        if (alive)
+          setState({
+            loading: false,
+            error: "",
+            user: data.user,
+            membership,
+            versions: v.data || [],
+            settings: s.data || {},
+          });
+      } catch (ex) {
+        if (alive)
+          setState((p) => ({
+            ...p,
+            loading: false,
+            error: ex.message || "Could not load setup.",
+          }));
       }
-      demoConf.push({ id: d.id, label: d.label, question: d.question, options });
-    }
-    setBusy(true);
-    try {
-      // Gate 1: one server-side transaction (fs_create_campaign) validates and
-      // creates campaign + groups + links + audit as a DRAFT, or nothing at all.
-      const { data: campId, error } = await sb().rpc("fs_create_campaign_v2", {
-        p_org: org.id,
-        p_name: name.trim(),
-        p_qv: verId,
-        p_threshold: Math.max(4, Number(threshold || 5)),
-        p_days: Math.max(1, Number(days || 30)),
-        p_groups: chosen.map((g) => ({
-          type: g.type,
-          label: (groups[g.type].label || g.label).trim() || g.label,
-          target: Math.max(0, Number(groups[g.type].target || 0)),
-        })),
-        p_demographics: demoConf.length ? demoConf : null,
-        p_is_sandbox: isSandbox,
-      });
-      if (error || !campId) throw new Error(error?.message || "Could not create campaign.");
-      router.push(`/campaigns/${campId}`);
-    } catch (ex) {
-      setErr(String(ex.message || ex));
-      setBusy(false);
-    }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [router]);
+  async function create(payload) {
+    const { data, error } = await sb().rpc("fs_create_campaign_v3", payload);
+    if (error || !data)
+      throw new Error(error?.message || "Could not create the assessment.");
+    router.push(`/campaigns/${data}`);
   }
-
-  if (!user) return <p className="muted">Loading…</p>;
   return (
-    <Shell active="campaigns" user={user}>
-      <div className="crumbs"><a href="/campaigns">Campaigns</a> / <b>New</b></div>
-      <h1>New assessment campaign</h1>
-      <p className="muted small">{org ? org.name : ""}</p>
-      {!canCreate ? (
-        <div className="err">Your role ({role || "none"}) can&apos;t create campaigns — ask an owner or assessment manager.</div>
-      ) : (
-        <form onSubmit={create}>
-          <div className="card" style={{ maxWidth: 640 }}>
-            <label style={{ display: "flex", alignItems: "flex-start", gap: 12, cursor: "pointer", padding: "2px 0 14px", borderBottom: "1px solid var(--line)", marginBottom: 14 }}>
-              <input type="checkbox" checked={isSandbox} onChange={(e) => setIsSandbox(e.target.checked)} style={{ marginTop: 4 }} />
-              <span>
-                <b>Sandbox / test campaign</b>
-                <span className="small muted" style={{ display: "block", marginTop: 3 }}>
-                  Use fabricated responses and exercise findings, AI review and intervention matching safely. Sandbox responses stay inside this campaign and official report generation is blocked.
-                </span>
-              </span>
-            </label>
-            <label className="f">Campaign name</label>
-            <Input type="text" value={name} onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. 2026 H2 innovation health check" />
-            <div className="grid2" style={{ marginTop: 6 }}>
-              <div>
-                <label className="f">Collection window (days)</label>
-                <Input type="text" inputMode="numeric" value={days}
-                  onChange={(e) => setDays(e.target.value.replace(/\D/g, ""))} />
-              </div>
-              <div>
-                <label className="f">Anonymity threshold (min responses per group)</label>
-                <Input type="text" inputMode="numeric" value={threshold}
-                  onChange={(e) => setThreshold(e.target.value.replace(/\D/g, ""))} />
-              </div>
-            </div>
-            <p className="small muted" style={{ marginTop: 8 }}>
-              Groups below the threshold are hidden in results to protect respondents.
-              Minimum 4 — recommended 5. This floor is also enforced server-side.
-            </p>
-            <label className="f" style={{ marginTop: 10 }}>Questionnaire</label>
-            <NativeSelect value={verId} onChange={(e) => setVerId(e.target.value)}>
-              {versions.map((v) => (
-                <NativeSelectOption key={v.id} value={v.id}>
-                  {v.version === "1.0"
-                    ? `v${v.version} — classic (same 50 questions for every group)`
-                    : `v${v.version} — stakeholder-tailored (recommended)${v.version.includes("draft") ? " (draft)" : ""}`}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-            <p className="small muted" style={{ marginTop: 6 }}>
-              The tailored version serves each stakeholder group only the questions written
-              for them; the classic version shows everyone the same set.
-            </p>
-          </div>
-
-          <div className="card" style={{ maxWidth: 640 }}>
-            <h2>Stakeholder groups</h2>
-            {GROUP_DEFS.map((g) => (
-              <div key={g.type} style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 0", borderBottom: "1px solid var(--line)" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, cursor: "pointer" }}>
-                  <input type="checkbox" checked={groups[g.type].on}
-                    onChange={(e) => setGroups((s) => ({ ...s, [g.type]: { ...s[g.type], on: e.target.checked } }))} />
-                  {g.type === "other" ? (
-                    <span style={{ flex: 1, display: "flex", alignItems: "center", gap: 8 }}>
-                      <Input type="text" value={groups[g.type].label}
-                        onClick={(e) => e.preventDefault()}
-                        onChange={(e) => setGroups((s) => ({ ...s, [g.type]: { ...s[g.type], label: e.target.value } }))}
-                        placeholder="Type the stakeholder name, e.g. Board members"
-                        style={{ maxWidth: 320 }} />
-                      <span className="small muted">{g.hint}</span>
-                    </span>
-                  ) : (
-                    <span><b>{g.label}</b><span className="small muted"> — {g.hint}</span></span>
-                  )}
-                </label>
-                <span className="small muted">target</span>
-                <Input type="text" inputMode="numeric" value={groups[g.type].target}
-                  onChange={(e) => setGroups((s) => ({ ...s, [g.type]: { ...s[g.type], target: e.target.value.replace(/\D/g, "") } }))}
-                  style={{ width: 70 }} />
-              </div>
-            ))}
-            <p className="small muted" style={{ marginTop: 10 }}>
-              Each selected group gets its own signed link the moment the campaign is created.
-            </p>
-          </div>
-
-          <div className="card" style={{ maxWidth: 640 }}>
-            <h2>Demographics <span className="small muted" style={{ fontWeight: 400 }}>— tick the details you want to record</span></h2>
-            <p className="small muted" style={{ marginTop: 2 }}>
-              Respondents always see these as <b>optional</b> (&quot;Prefer not to say&quot; is the default),
-              and every demographic cut is hidden below the anonymity threshold — exactly like
-              stakeholder groups. Use them to compare departments, tenure bands, work
-              arrangements and more.
-            </p>
-            {DEMO_DIMS.map((d) => (
-              <div key={d.id} style={{ padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-                  <input type="checkbox" checked={!!demoOn[d.id]}
-                    onChange={(e) => setDemoOn((s) => ({ ...s, [d.id]: e.target.checked }))} />
-                  <span style={{ flex: 1 }}>
-                    <b>{d.label}</b>
-                    <span className="small muted"> — {d.custom ? "you define the options" : d.options.join(" · ")}</span>
-                  </span>
-                </label>
-                {d.custom && demoOn[d.id] ? (
-                  <Input type="text" value={demoCustom[d.id] || ""}
-                    onChange={(e) => setDemoCustom((s) => ({ ...s, [d.id]: e.target.value }))}
-                    placeholder={d.id === "language" ? "Leave empty for the standard list, or type your own, comma-separated" : (d.placeholder || "Comma-separated options")}
-                    style={{ marginTop: 8, marginLeft: 28, width: "calc(100% - 28px)" }} />
-                ) : null}
-              </div>
-            ))}
-          </div>
-
-          {err ? <div className="err">{err}</div> : null}
-          <Button disabled={busy}>
-            {busy ? "Creating…" : isSandbox ? "Create sandbox campaign" : "Create draft campaign"}
-          </Button>
-          <p className="small muted" style={{ marginTop: 8 }}>
-            The campaign starts as a <b>draft</b> with its links ready — review everything on the
-            campaign page, then launch with “Open collection”. Nothing is collected until you do.
+    <Shell active="campaigns" user={state.user}>
+      <div className="crumbs">
+        <Link href="/campaigns">Campaigns</Link> / New assessment
+      </div>
+      <div className="pagehead">
+        <div>
+          <p className="eyebrow">BUILD YOUR NEXT ASSESSMENT</p>
+          <h1>Start with a clear objective</h1>
+          <p className="lead">
+            A considered setup makes every response more useful.
           </p>
-        </form>
+        </div>
+      </div>
+      {state.loading ? (
+        <p role="status">Loading setup…</p>
+      ) : state.error ? (
+        <div role="alert" className="err">
+          {state.error}
+          <p>
+            <button onClick={() => window.location.reload()}>Try again</button>
+          </p>
+        </div>
+      ) : !["owner", "manager"].includes(state.membership.role) ? (
+        <div className="card">
+          An owner or assessment manager can create an assessment.
+        </div>
+      ) : (
+        <SetupWizard
+          org={state.membership.fs_orgs}
+          user={state.user}
+          versions={state.versions}
+          settings={state.settings}
+          onCreate={create}
+        />
       )}
     </Shell>
   );
