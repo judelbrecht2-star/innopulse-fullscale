@@ -17,7 +17,7 @@ import { Check, Plus, WarningTriangle } from "iconoir-react";
 const PILLAR_ICON = { sii: "chart", iem: "people", oic: "person", ipm: "gear", roi: "pie" };
 
 import { listOrgCampaigns } from "../../lib/campaign-data";
-import { defaultCampaign, requestedCampaignId, campaignHref } from "../../lib/campaign-context";
+import { defaultCampaign, requestedCampaignId, setCampaignUrl, campaignHref } from "../../lib/campaign-context";
 import CampaignWorkflow from "../../components/campaign-workflow";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 
@@ -234,255 +234,338 @@ export default function Interventions() {
     });
   }
   function exportRoadmap() {
-    const rows = [["Priority", "Type", "Pillar", "Groups compared", "Action / milestone", "Status", "Owner", "Horizon", "Measure", "ISO readiness", "Services", "Outcome status", "Baseline score", "Target score", "Observed score", "Review due", "Learning note"]];
-    gaps.forEach((g, gi) => (g.entry.actions || []).forEach((t, i) => {
-      const a = actions.find((x) => x.intervention_id === g.entry.id && x.action_index === i);
-      const outcome = outcomes.find((x) => x.intervention_id === g.entry.id);
-      rows.push([gi + 1, "Perception gap", g.p.short, `${g.hiName} ${g.hi} vs ${g.loName} ${g.lo} (${g.items} shared Qs)`, t, a?.status || "not_started", a?.owner || g.entry.owner_suggestion, g.entry.horizon, g.entry.kpi, g.entry.iso_map, (g.entry.services || []).join("; "), outcome?.status || "planned", outcome?.baseline_score ?? "", outcome?.target_score ?? "", outcome?.observed_score ?? "", outcome?.review_due_at || "", outcome?.learning_note || ""]);
-    }));
-    opps.forEach((o) => (o.entry.actions || []).forEach((t, i) => {
-      const a = actions.find((x) => x.intervention_id === o.entry.id && x.action_index === i);
-      const outcome = outcomes.find((x) => x.intervention_id === o.entry.id);
-      rows.push(["—", `Band (${bandWord(o.v)})`, o.p.short, "All groups", t, a?.status || "not_started", a?.owner || o.entry.owner_suggestion, o.entry.horizon, o.entry.kpi, o.entry.iso_map, (o.entry.services || []).join("; "), outcome?.status || "planned", outcome?.baseline_score ?? "", outcome?.target_score ?? "", outcome?.observed_score ?? "", outcome?.review_due_at || "", outcome?.learning_note || ""]);
-    }));
-    actions.filter((a) => a.is_milestone).forEach((a) => {
-      rows.push(["—", "Milestone", pillarById[a.pillar]?.short || a.pillar, "", a.title, a.status, a.owner || "", "", "", "", "", "", "", "", "", "", ""]);
-    });
-    const csv = rows.map((r) => r.map(csvEsc).join(",")).join("\r\n");
-    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
-    const aEl = document.createElement("a");
-    aEl.href = URL.createObjectURL(blob);
-    aEl.download = `${campaign.name.replace(/[^\w]+/g, "-")}-roadmap.csv`;
-    aEl.click();
+    const rows = [["Priority", "Type", "Pillar", "Groups compared", "Action / milestone", "Status", "Owner", "Horizon", "Measure", "ISO readiness", "Services", "Outcome status", "Baseline score", "…21153 tokens truncated…{
+      const { data: sess } = await sb().auth.getSession();
+      const r = await fetch(`${FN_BASE}/fs-responses-ops`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess.session?.access_token}` },
+        body: JSON.stringify({ action: "detail", campaign_id: sel, response_id: row.id }),
+      });
+      setDetail(r.ok ? await r.json() : { error: true });
+    } catch { setDetail({ error: true }); }
   }
 
-  const horizonBig = curEntry?.horizon?.match(/(\d+)\s*-?\s*day/gi)?.pop()?.match(/\d+/)?.[0];
+  const statusPill = (s) => s === "Completed" ? "open" : s === "In progress" ? "teal" : s === "Not started" ? "closed" : s === "Excluded" ? "closed" : s === "Test" ? "violet" : "draft";
+  // soft row tint + solid left edge per stakeholder group
+  const GROUP_TINT = {
+    executive: "rgba(232,51,46,.045)", employee: "rgba(14,140,140,.055)",
+    customer: "rgba(183,121,31,.06)", partner: "rgba(49,110,180,.055)", other: "rgba(122,90,190,.055)",
+  };
+
+  if (initialLoading || detailsLoading || !campaigns.length || err) return <Shell active="responses" user={user} campaignId={sel}><DataState loading={initialLoading || detailsLoading} error={err} empty={!campaigns.length} retry={() => window.location.reload()} /></Shell>;
 
   return (
-    <Shell active="insights" user={user} campaignId={selCampaign}>
-      <CampaignWorkflow campaign={campaign} active="actions" />
-      {saveError ? <div className="err" role="alert">{saveError}</div> : null}
-      <div className="flex flex-wrap items-center gap-3 mb-5"><label htmlFor="action-campaign">Campaign</label>
-        <NativeSelect id="action-campaign" value={selCampaign} disabled={busy} onChange={(e) => setSelCampaign(e.target.value)} style={{ width: "auto", maxWidth: "100%" }}>
-          {campaigns.map((c) => <NativeSelectOption key={c.id} value={c.id}>{c.is_sandbox ? "[Sandbox] " : ""}{c.name}</NativeSelectOption>)}
-        </NativeSelect></div>
-      <div className="crumbs"><Link href={campaignHref("/insights", selCampaign)}>Insights</Link> / <b>{campaign.name}</b></div>
+    <Shell active="responses" user={user} campaignId={sel}>
+      <CampaignWorkflow campaign={campaign} active="responses" />
+      <div className="crumbs">Responses / <b>{campaign?.name || "—"}</b></div>
       <div className="pagehead">
         <div>
-          <h1>Recommended interventions</h1>
-          <p className="lead">Drawn from the approved InnoPulse intervention library — triggered by this campaign&apos;s scores and stakeholder gaps (compared on shared questions only), not generated ad hoc.</p>
+          <h1>Responses</h1>
+          <p className="lead">Monitor participation, review data quality and read written feedback from each stakeholder group.</p>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Button variant="ghost" onClick={exportRoadmap}><Download className="inline size-4 -mt-0.5" /> Export roadmap</Button>
-          <Button disabled={busy || planned || !recommended.length} onClick={addAllToPlan}>
-            {planned ? <>In action plan <Check className="inline size-4 -mt-0.5" /></> : <><Plus className="inline size-4 -mt-0.5" /> Add to action plan</>}
-          </Button>
+          <Button variant="ghost" onClick={() => exportCsv(false)}><Download className="inline size-4 -mt-0.5" /> Export responses</Button>
+          <Button disabled={!canManage} title={canManage ? "" : "Owners and managers only"}
+            onClick={() => { setRemOpen((v) => !v); if (!remGroup && groups.length) setRemGroup(groups[0].id); }}>✈ Send reminders</Button>
+          <NativeSelect aria-label="Campaign" value={sel} disabled={busy} onChange={(e) => { setCampaignUrl(e.target.value); setSel(e.target.value); }} style={{ width: "auto", fontWeight: 600 }}>
+            {campaigns.map((c) => <NativeSelectOption key={c.id} value={c.id}>{c.name}</NativeSelectOption>)}
+          </NativeSelect>
         </div>
       </div>
-      {campaign.is_sandbox ? (
-        <div className="card" style={{ borderColor: "var(--amber, #b7791f)", background: "#fffaf0" }}>
-          <b>Sandbox campaign</b>
-          <p className="small muted" style={{ margin: "4px 0 0" }}>Use this workspace to test action planning and outcome learning. Nothing here can produce an official report.</p>
-        </div>
-      ) : null}
+      {err ? <div className="err">{err}</div> : null}
 
       <div className="stats">
-        <div className="stat"><span className="ic c-red"><I.info /></span><div>
-          <div className="k">Critical perception gaps</div><div className="v">{gaps.length}</div>
-          <span className="small muted">pillar{gaps.length === 1 ? "" : "s"}</span>
-        </div></div>
-        <div className="stat"><span className="ic c-red"><I.chart /></span><div>
-          <div className="k">Highest gap</div><div className="v">{gaps[0] ? `${gaps[0].d} pts` : "—"}</div>
-          <span className="small muted">{gaps[0] ? `${gaps[0].p.short} · ${gaps[0].hiName} vs ${gaps[0].loName}` : "needs two comparable groups"}</span>
-        </div></div>
-        <div className="stat"><span className="ic c-teal"><I.doc /></span><div>
-          <div className="k">Recommended horizon</div><div className="v">{horizonBig ? `${horizonBig} days` : "—"}</div>
-          <span className="small muted">to re-measure</span>
-        </div></div>
-        <div className="stat"><span className="ic c-green"><I.person /></span><div>
-          <div className="k">Primary owner</div>
-          <div style={{ fontWeight: 800, fontSize: 16, lineHeight: 1.3 }}>{savedOwner || curEntry?.owner_suggestion || "—"}</div>
-        </div></div>
+        <div className="stat"><span className="ic c-red"><I.people /></span><div><div className="k">Invited (targets)</div><div className="v">{invited}</div></div></div>
+        <div className="stat"><span className="ic c-green"><I.shield /></span><div><div className="k">Completed</div><div className="v">{completed}</div></div></div>
+        <div className="stat"><span className="ic c-teal"><I.chat /></span><div><div className="k">In progress</div><div className="v">{inProg}</div></div></div>
+        <div className="stat"><span className="ic c-amber"><I.pie /></span><div><div className="k">Completion rate</div><div className="v">{completion}%</div></div></div>
+        <div className="stat"><span className="ic c-grey"><I.doc /></span><div><div className="k">Outstanding</div><div className="v">{outstanding}</div></div></div>
+        <div className="stat"><span className="ic c-violet"><I.info /></span><div><div className="k">Flagged</div><div className="v">{flagged}</div>{lastResp ? <span className="small muted">last response {ago(lastResp)}</span> : null}</div></div>
       </div>
 
-      {smallGroups.length ? (
-        <p className="small" style={{ margin: "0 0 14px", color: "var(--amber, #b7791f)" }}>
-          <WarningTriangle className="inline size-4 -mt-0.5" /> Small samples ({smallGroups.map((g) => `${groupName(g)} n=${g.n}`).join(", ")}) — treat gap-driven
-          priorities as indicative until groups reach {MIN_N}+ responses.
-        </p>
-      ) : null}
-
-      {!cur ? (
-        <div className="card"><p className="muted">Recommendations appear when privacy-eligible scores or comparable stakeholder gaps match the approved intervention library.</p></div>
-      ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,2fr) minmax(280px,1fr)", gap: 18, alignItems: "start" }} className="ivgrid">
-          <style>{`@media(max-width:1020px){.ivgrid{grid-template-columns:1fr!important}}`}</style>
-
-          <div>
-            <div className="card">
-              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                <span className="numchip">{priorityIndex || "•"}</span>
-                <h2 style={{ margin: 0, fontSize: 20 }}>{sel.kind === "gap" ? `Priority ${priorityIndex}` : "Opportunity"} · {curPillar.short}</h2>
-                <span className={"pill " + (sel.kind === "gap" ? "closed" : "draft")} style={{ textTransform: "uppercase" }}>
-                  {sel.kind === "gap" ? "Perception gap" : `${bandWord(cur.v)} band`}
-                </span>
-                {sel.kind === "gap"
-                  ? <span className="small muted">{cur.hiName} {cur.hi} vs {cur.loName} {cur.lo} · {cur.items} shared questions</span>
-                  : <span className="small muted">Overall {cur.v}</span>}
-              </div>
-
-              {sel.kind === "gap" ? (
-                <div style={{ display: "flex", alignItems: "center", gap: 14, margin: "16px 0 6px" }}>
-                  <span className="small" style={{ fontWeight: 800, color: "var(--band-low)" }}>{cur.loName} {cur.lo}</span>
-                  <div className="gbar">
-                    <span className="cap" style={{ left: cur.lo + "%", background: "var(--primary)" }} />
-                    <span className="cap" style={{ left: cur.hi + "%", background: "var(--band-high)" }} />
-                  </div>
-                  <span className="small" style={{ fontWeight: 800, color: "var(--band-high)" }}>{cur.hiName} {cur.hi}</span>
-                  <span style={{ fontWeight: 800, fontSize: 22, color: "var(--primary)", whiteSpace: "nowrap" }}>{cur.d}<div className="small muted" style={{ fontWeight: 600 }}>point gap</div></span>
-                </div>
-              ) : null}
-
-              <p className="small" style={{ margin: "12px 0" }}>{curEntry.summary}</p>
-
-              {(curEntry.actions || []).map((t, i) => {
-                const a = actFor(i);
-                const st = a?.status || "not_started";
-                return (
-                  <div className="act" key={i}>
-                    <input type="checkbox" aria-label={t} disabled={busy} checked={st === "done"} onChange={(e) => toggleDone(i, e.target.checked)} />
-                    <span className="numchip sm" style={{ background: "transparent", color: "var(--primary)", border: "none", fontSize: 15 }}>{i + 1}.</span>
-                    <span className="txt">{t}</span>
-                    <button disabled={busy} aria-label={"Change status: " + t} className={"stchip " + st} onClick={() => cycleStatus(i)}>
-                      {st === "not_started" ? "Not started" : st === "in_progress" ? "In progress" : "Done"}
-                    </button>
-                  </div>
-                );
-              })}
-              {milestones.map((m) => (
-                <div className="act" key={m.id} style={{ borderStyle: "dashed" }}>
-                  <input type="checkbox" aria-label={m.title} disabled={busy} checked={m.status === "done"} onChange={(e) => toggleMilestone(m, e.target.checked)} />
-                  <span className="small" style={{ fontWeight: 800, color: "var(--muted)" }}>⚑</span>
-                  <span className="txt">{m.title}</span>
-                  <span className={"stchip " + m.status} style={{ cursor: "default" }}>{m.status === "done" ? "Done" : "Milestone"}</span>
-                </div>
-              ))}
-            </div>
-
-            {gaps.length > 1 ? (
-              <div className="card">
-                <h2>Remaining perception-gap priorities</h2>
-                {gaps.map((g, gi) => (sel.kind === "gap" && g.p.id === sel.id) ? null : (
-                  <div className="prow" key={g.p.id} onClick={() => setSelPillar({ kind: "gap", id: g.p.id })}>
-                    <span className="numchip sm">{gi + 1}</span>
-                    <span className="nm">{g.p.short}</span>
-                    <span className="small muted">{g.loName}</span><span className="v" style={{ color: "var(--band-low)" }}>{g.lo}</span>
-                    <div className="gbar" style={{ maxWidth: 220 }}>
-                      <span className="cap" style={{ left: g.lo + "%", background: "var(--primary)", width: 10, height: 10 }} />
-                      <span className="cap" style={{ left: g.hi + "%", background: "var(--band-high)", width: 10, height: 10 }} />
-                    </div>
-                    <span className="small muted">{g.hiName}</span><span className="v">{g.hi}</span>
-                    <span className="pts">{g.d} pts</span>
-                    <Badge variant="outline" data-tone="draft">{g.entry.impact || "High"} impact</Badge>
-                    <span className="muted">›</span>
-                  </div>
-                ))}
-              </div>
-            ) : null}
+      {remOpen ? (
+        <div className="card" style={{ border: "1.5px solid var(--primary)" }}>
+          <h2>Send reminder emails</h2>
+          <p className="small muted" style={{ margin: "2px 0 10px" }}>
+            Recipients get the group&apos;s signed link. Addresses are used for delivery only —
+            they are never stored or connected to responses.
+          </p>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+            <NativeSelect value={remGroup} onChange={(e) => setRemGroup(e.target.value)} style={{ width: "auto" }}>
+              {groups.map((g) => <NativeSelectOption key={g.id} value={g.id}>{groupName(g)}</NativeSelectOption>)}
+            </NativeSelect>
           </div>
-
-          <div>
-            <div className="card">
-              <h2>Execution plan</h2>
-              <div className="kv"><span className="k"><I.person />Owner</span>
-                {ownerEdit === null ? (
-                  <span>{savedOwner || curEntry.owner_suggestion}</span>
-                ) : (
-                  <span style={{ display: "flex", gap: 6, flex: 1 }}>
-                    <Input type="text" value={ownerEdit} onChange={(e) => setOwnerEdit(e.target.value)} placeholder={curEntry.owner_suggestion} />
-                    <Button size="sm" disabled={busy} onClick={saveOwner}>Save</Button>
-                  </span>
-                )}
-              </div>
-              <div className="kv"><span className="k"><I.doc />Horizon</span><span>{curEntry.horizon}</span></div>
-              <div className="kv"><span className="k"><I.chart />Effort</span><Badge variant="outline" data-tone="draft">{curEntry.effort}</Badge></div>
-              <div className="kv"><span className="k"><I.chart />Impact</span><Badge variant="secondary" data-tone="open">{curEntry.impact}</Badge></div>
-              <div className="kv"><span className="k"><I.pie />Measure</span><span className="small">{curEntry.kpi}</span></div>
-              <div className="kv" style={{ borderBottom: "none" }}><span className="k"><I.shield />ISO readiness</span><span className="small">{curEntry.iso_map}</span></div>
-              <div style={{ margin: "8px 0 14px" }}>
-                {(curEntry.services || []).map((s, i) => <span className="tagchip" key={i}>{s}</span>)}
-              </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <Button size="sm" onClick={() => setOwnerEdit(savedOwner || "")}>Assign owner</Button>
-                {msEdit === null ? (
-                  <Button variant="ghost" size="sm" onClick={() => setMsEdit("")}>⚑ Add milestone</Button>
-                ) : (
-                  <span style={{ display: "flex", gap: 6, width: "100%", marginTop: 8 }}>
-                    <Input type="text" value={msEdit} onChange={(e) => setMsEdit(e.target.value)} placeholder="e.g. Listening sessions completed by 15 Aug" />
-                    <Button size="sm" disabled={busy} onClick={saveMilestone}>Add</Button>
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div className="card">
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <h2 style={{ margin: 0, flex: 1 }}>Outcome learning</h2>
-                {curOutcome ? <Badge variant="secondary" data-tone={curOutcome.status === "achieved" ? "open" : curOutcome.status === "at_risk" || curOutcome.status === "not_achieved" ? "closed" : "draft"}>{OUTCOME_STATUS[curOutcome.status] || curOutcome.status}</Badge> : <Badge variant="outline" data-tone="draft">Not measured</Badge>}
-              </div>
-              <p className="small muted" style={{ margin: "6px 0 12px" }}>Record the expected movement now, then return with an observed result. InnoPulse calculates progress without asking AI to reinterpret the number.</p>
-              <form key={`${curEntry?.id || "none"}-${curOutcome?.updated_at || "new"}`} onSubmit={saveOutcome}>
-                <div className="grid2">
-                  <div>
-                    <label className="f">Baseline score</label>
-                    <Input name="baseline_score" type="number" min="0" max="100" step="0.1" defaultValue={baselineScore} placeholder="0–100" />
-                  </div>
-                  <div>
-                    <label className="f">Target score</label>
-                    <Input name="target_score" type="number" min="0" max="100" step="0.1" defaultValue={curOutcome?.target_score ?? ""} placeholder="0–100" />
-                  </div>
-                  <div>
-                    <label className="f">Observed score</label>
-                    <Input name="observed_score" type="number" min="0" max="100" step="0.1" defaultValue={curOutcome?.observed_score ?? ""} placeholder="Add at review" />
-                  </div>
-                  <div>
-                    <label className="f">Review due</label>
-                    <Input name="review_due_at" type="date" defaultValue={curOutcome?.review_due_at || ""} />
-                  </div>
-                </div>
-                <label className="f" style={{ marginTop: 9 }}>What did we learn?</label>
-                <Textarea name="learning_note" maxLength={2000} defaultValue={curOutcome?.learning_note || ""} placeholder="Evidence of adoption, barriers, unintended effects, and what should change next." style={{ minHeight: 82 }} />
-                {learned?.delta != null ? (
-                  <p className="small" style={{ margin: "8px 0 0" }}>
-                    Observed change: <b>{learned.delta > 0 ? "+" : ""}{learned.delta} points</b>
-                    {learned.progressPct != null ? ` · ${learned.progressPct}% of target movement` : ""}
-                  </p>
-                ) : null}
-                <p className="small muted" style={{ margin: "7px 0" }}>Measure: {curEntry?.kpi || "Define a measurable indicator before starting."}</p>
-                <Button size="sm" disabled={busy || !curEntry}>{curOutcome ? "Update outcome review" : "Save outcome baseline"}</Button>
-              </form>
-            </div>
-
-            {opps.length ? (
-              <div className="card">
-                <h2>Baseline improvement opportunities</h2>
-                {opps.map((o) => {
-                  const Icon = I[PILLAR_ICON[o.p.id]] || I.chart;
-                  return (
-                    <div className="opp" key={o.p.id} onClick={() => setSelPillar({ kind: "band", id: o.p.id })}>
-                      <span className="chip c-green" style={{ width: 40, height: 40, flex: "0 0 40px" }}><Icon style={{ width: 18, height: 18 }} /></span>
-                      <span className="nm">{o.p.short}</span>
-                      <span style={{ fontWeight: 800 }}>{o.v}</span>
-                      <span className="small muted">· {bandWord(o.v)}</span>
-                      <span className="muted">›</span>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : null}
+          <label className="f">Email addresses <span className="muted">(comma or new-line separated, max 100)</span></label>
+          <Textarea value={remEmails} onChange={(e) => setRemEmails(e.target.value)} placeholder="ana@company.com, ben@company.com" />
+          <label className="f">Personal note <span className="muted">(optional)</span></label>
+          <Textarea value={remMsg} onChange={(e) => setRemMsg(e.target.value)} placeholder="A short line from you, shown in the email." />
+          {remState ? <p className="small" style={{ color: remState.startsWith("Sent") ? "var(--green, #2f855a)" : "var(--primary)" }}>{remState}</p> : null}
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <Button size="sm" disabled={busy} onClick={async () => {
+              const emails = remEmails.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean);
+              if (!emails.length) { setRemState("Enter at least one email address."); return; }
+              setBusy(true); setRemState("Sending…");
+              try {
+                const { data: sess } = await sb().auth.getSession();
+                const r = await fetch(`${FN_BASE}/fs-notify`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess.session?.access_token}` },
+                  body: JSON.stringify({ campaign_id: sel, group_id: remGroup, emails, message: remMsg }),
+                });
+                const j = await r.json();
+                setRemState(r.ok ? `Sent ${j.sent} reminder${j.sent === 1 ? "" : "s"} ✓` : (j.error || "Could not send."));
+                if (r.ok) setRemEmails("");
+              } catch { setRemState("Could not send — network problem."); }
+              setBusy(false);
+            }}>Send</Button>
+            <Button variant="ghost" size="sm" onClick={() => { setRemOpen(false); setRemState(""); }}>Close</Button>
           </div>
         </div>
-      )}
+      ) : null}
+
+      <div className="card">
+        <h2>Stakeholder coverage</h2>
+        {groups.map((g) => {
+          const n = resps.filter((r) => r.valid && r.group_id === g.id).length;
+          const pct = g.target_n ? Math.min(100, Math.round((n / g.target_n) * 100)) : 0;
+          const meta = GROUP_META[g.type] || { chip: "c-grey", icon: "people" };
+          const Icon = I[meta.icon] || I.people;
+          const link = links.find((l) => l.group_id === g.id && l.mode === "group" && l.active);
+          const lastForGroup = [...resps].reverse().find((r) => r.group_id === g.id);
+          return (
+            <div className="covrow" key={g.id}>
+              <span className="nm"><span className={"chip " + meta.chip} style={{ width: 34, height: 34, flex: "0 0 34px" }}><Icon style={{ width: 16, height: 16 }} /></span>{groupName(g)}</span>
+              <span className="frac">{n} / {g.target_n || "—"}</span>
+              <span className="bar"><i style={{ width: pct + "%", background: GROUP_BAR[g.type] || "var(--primary)" }} /></span>
+              <span className="pct">{pct}%</span>
+              {(() => {
+                const gate = gateFor(n, { score: threshold, comment: commentThreshold });
+                if (gate === "suppressed") return <span className="privnote"><Lock className="inline size-4 -mt-0.5" /> scores hidden until {threshold} completed</span>;
+                if (gate === "scores-only") return <span className="privnote"><Lock className="inline size-4 -mt-0.5" /> comments hidden until {commentThreshold} completed</span>;
+                return <span className="privnote" style={{ visibility: "hidden" }}>ok</span>;
+              })()}
+              <span className="small muted" style={{ width: 110 }}>{lastForGroup ? `last ${ago(lastForGroup.submitted_at)}` : "no responses yet"}</span>
+              {link ? (
+                <Button variant="ghost" size="sm" onClick={() => copyLink(link.token)}>{copied === link.token ? "Copied" : "Copy link"}</Button>
+              ) : <span className="small muted">no active link</span>}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="card">
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+          <Input type="text" placeholder="Search response reference or written feedback" value={q}
+            onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 220 }} />
+          <NativeSelect value={fGroup} onChange={(e) => setFGroup(e.target.value)} style={{ width: "auto" }}>
+            <NativeSelectOption value="all">All groups</NativeSelectOption>
+            {groups.map((g) => <NativeSelectOption key={g.id} value={g.id}>{groupName(g)}</NativeSelectOption>)}
+          </NativeSelect>
+          <NativeSelect value={fStatus} onChange={(e) => setFStatus(e.target.value)} style={{ width: "auto" }}>
+            {["all", "Completed", "In progress", "Not started", "Abandoned", "Excluded", "Test"].map((s) => (
+              <NativeSelectOption key={s} value={s}>{s === "all" ? "All statuses" : s}</NativeSelectOption>
+            ))}
+          </NativeSelect>
+          <NativeSelect value={fQuality} onChange={(e) => setFQuality(e.target.value)} style={{ width: "auto" }}>
+            {["all", "Good", "Review", "Test"].map((s) => <NativeSelectOption key={s} value={s}>{s === "all" ? "Data quality" : s}</NativeSelectOption>)}
+          </NativeSelect>
+          <label className="small" style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <input type="checkbox" checked={fComments} onChange={(e) => setFComments(e.target.checked)} /> Has written responses
+          </label>
+        </div>
+
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead style={{ width: 30 }}></TableHead>
+              <TableHead>Respondent</TableHead><TableHead>Group</TableHead><TableHead>Status</TableHead><TableHead>Progress</TableHead>
+              <TableHead>Written</TableHead><TableHead>DK/NA</TableHead><TableHead>Quality</TableHead><TableHead>When</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtered.length === 0 ? (
+              <TableRow><TableCell colSpan={9} className="muted small">No responses match these filters yet.</TableCell></TableRow>
+            ) : filtered.map((row) => (
+              <TableRow key={row.id} style={{
+                cursor: row.kind === "response" ? "pointer" : "default",
+                background: drawer?.id === row.id ? "var(--primary-soft)" : GROUP_TINT[row.group?.type] || undefined,
+                boxShadow: row.group ? `inset 3px 0 0 ${GROUP_BAR[row.group.type] || "var(--muted)"}` : undefined,
+              }}
+                onClick={() => openDrawer(row)}>
+                <TableCell onClick={(e) => e.stopPropagation()}>
+                  {row.kind === "response" ? (
+                    <input type="checkbox" checked={!!checks[row.id]}
+                      onChange={(e) => setChecks((s) => ({ ...s, [row.id]: e.target.checked }))} />
+                  ) : null}
+                </TableCell>
+                <TableCell><b>{row.ref}</b></TableCell>
+                <TableCell className="small">{groupName(row.group) || "—"}</TableCell>
+                <TableCell><span className={"pill " + statusPill(row.status)}>{row.status}</span></TableCell>
+                <TableCell className="small">
+                  {row.kind === "invite" ? "—" : `${row.answered} / ${row.total || "—"}`}
+                  {row.kind !== "invite" && row.total ? (
+                    <span className="bar" style={{ display: "inline-block", width: 70, height: 6, background: "#e8e8ec", borderRadius: 99, marginLeft: 8, verticalAlign: "middle", overflow: "hidden" }}>
+                      <i style={{ display: "block", height: "100%", width: Math.min(100, Math.round((row.answered / row.total) * 100)) + "%", background: "var(--teal)", borderRadius: 99 }} />
+                    </span>
+                  ) : null}
+                </TableCell>
+                <TableCell className="small">{row.nComments ? `${row.nComments} comment${row.nComments === 1 ? "" : "s"}` : "—"}</TableCell>
+                <TableCell className="small">{row.dkPct == null ? "—" : row.dkPct + "%"}</TableCell>
+                <TableCell>{row.quality ? <span className={"pill " + (row.quality === "Good" ? "open" : row.quality === "Test" ? "violet" : "draft")}>{row.quality}</span> : "—"}</TableCell>
+                <TableCell className="small muted">{row.whenLabel}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+        <p className="small muted" style={{ marginTop: 10 }}>
+          Respondents are anonymous by design — references are assigned in order of submission and
+          carry no identity. In-progress rows come from live autosave beacons; unique invitations
+          track completion without linking who to what.
+        </p>
+      </div>
+
+      {checkedIds.length && canManage ? (
+        <div className="bulkbar">
+          <span className="n">{checkedIds.length} selected</span>
+          <button onClick={() => exportCsv(true)}>Export selected</button>
+          <button onClick={() => setRespState(checkedIds, { flag: "review" })} disabled={busy}>Flag for review</button>
+          <button onClick={() => setRespState(checkedIds, { valid: false, flag: "test" })} disabled={busy}>Mark as test</button>
+          <button className="danger" onClick={() => setRespState(checkedIds, { valid: false, flag: null })} disabled={busy}>Exclude</button>
+          <button onClick={() => setRespState(checkedIds, { valid: true, flag: null })} disabled={busy}>Restore</button>
+          <button onClick={() => setChecks({})}>Clear</button>
+        </div>
+      ) : null}
+
+      {drawer ? (
+        <>
+          <div className="drawer-overlay" onClick={() => setDrawer(null)} />
+          <div className="drawer">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h2 style={{ margin: 0 }}>{drawer.ref} <span className={"pill " + statusPill(drawer.status)} style={{ marginLeft: 8 }}>{drawer.status}</span></h2>
+              <button className="iconbtn" onClick={() => setDrawer(null)}>✕</button>
+            </div>
+            <p className="small muted" style={{ margin: "6px 0 0" }}>
+              {groupName(drawer.group)} · Submitted {drawer.whenLabel} · Identity not collected
+            </p>
+
+            {(() => {
+              // Gate 1: the server decides. Below-threshold data never reaches the browser;
+              // every individual-record view is audit-logged server-side.
+              if (!detail) return <p className="muted small" style={{ marginTop: 14 }}>Loading…</p>;
+              if (detail.error) return <div className="err" style={{ marginTop: 14 }}>Could not load this response.</div>;
+              if (detail.locked) return (
+                <div className="lockrow" style={{ marginTop: 16 }}>
+                  <Lock className="inline size-4 -mt-0.5" /> This group has {detail.have} of {detail.needed} responses. To protect
+                  respondents in small groups, per-response answers and written feedback stay on the server until the group
+                  passes the comment threshold. This applies to every role, including the owner.
+                </div>
+              );
+
+  return (
+                <>
+                  <div className="vbanner"><ShieldCheck className="inline size-4 -mt-0.5" /> These are the respondent&apos;s verbatim comments — not an AI summary.</div>
+
+                  <h2 style={{ fontSize: 15, margin: "14px 0 8px" }}>Pillar breakdown</h2>
+                  <Table>
+                    <TableHeader><TableRow><TableHead>Pillar</TableHead><TableHead>Score</TableHead><TableHead>Answered</TableHead><TableHead>DK/NA</TableHead></TableRow></TableHeader>
+                    <TableBody>
+                      {(detail.pillars || []).map((d) => (
+                        <TableRow key={d.pid}>
+                          <TableCell className="small"><b>{PILLAR_NAMES[d.pid] || d.pid}</b></TableCell>
+                          <TableCell className="small">{d.score ?? "—"}</TableCell>
+                          <TableCell className="small">{d.n}</TableCell>
+                          <TableCell className="small">{d.dk}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  <p className="small muted" style={{ margin: "6px 0 0" }}>
+                    Individual-level view — access is audit-logged, visible only to your team,
+                    never to respondents or in reports.
+                  </p>
+
+                  <h2 style={{ fontSize: 15, margin: "18px 0 8px" }}>Written responses ({(detail.comments || []).length})</h2>
+                  {(detail.comments || []).length === 0 ? <p className="muted small">None left.</p> :
+                    (detail.comments || []).map((cm, i) => (
+                      <div className="vcard" key={cm.id || i}>
+                        <div className="ph">
+                          <span className="pn">{PILLAR_NAMES[cm.pillar] || cm.pillar}</span>
+                          <span className="tag">Verbatim response</span>
+                          {canManage || role === "analyst" ? (
+                            <Button variant="ghost" size="sm" disabled={busy} style={{ marginLeft: "auto" }}
+                              onClick={async () => {
+                                setBusy(true);
+                                try {
+                                  const { data: sess } = await sb().auth.getSession();
+                                  const r = await fetch(`${FN_BASE}/fs-responses-ops`, {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess.session?.access_token}` },
+                                    body: JSON.stringify({ action: "flag_comment", campaign_id: sel, comment_id: cm.id, in_report: !cm.in_report }),
+                                  });
+                                  const j = await r.json();
+                                  if (r.ok) setDetail((d) => ({ ...d, comments: d.comments.map((x) => x.id === cm.id ? { ...x, in_report: j.in_report } : x) }));
+                                  else setErr(j.error || "Could not update.");
+                                } catch { setErr("Could not update."); }
+                                setBusy(false);
+                              }}>
+                              {cm.in_report ? "In report — remove" : "Add to report"}
+                            </Button>
+                          ) : cm.in_report ? <Badge variant="secondary" data-tone="teal" style={{ marginLeft: "auto" }}>In report</Badge> : null}
+                        </div>
+                        <p>{cm.body}</p>
+                        {canManage || role === "analyst" ? (
+                          <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                            <Input type="text" defaultValue={(cm.themes || []).join(", ")} placeholder="Themes, comma-separated — e.g. workload, recognition"
+                              style={{ flex: 1, fontSize: 12.5, padding: "5px 9px" }}
+                              onBlur={async (e) => {
+                                const themes = e.target.value.split(",").map((x) => x.trim()).filter(Boolean);
+                                if (themes.join("|") === (cm.themes || []).join("|")) return;
+                                try {
+                                  const { data: sess } = await sb().auth.getSession();
+                                  const r = await fetch(`${FN_BASE}/fs-responses-ops`, {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess.session?.access_token}` },
+                                    body: JSON.stringify({ action: "tag_comment", campaign_id: sel, comment_id: cm.id, themes }),
+                                  });
+                                  const j = await r.json();
+                                  if (r.ok) setDetail((d) => ({ ...d, comments: d.comments.map((x) => x.id === cm.id ? { ...x, themes: j.themes } : x) }));
+                                  else setErr(j.error || "Could not save themes.");
+                                } catch { setErr("Could not save themes."); }
+                              }} />
+                          </div>
+                        ) : (cm.themes || []).length ? (
+                          <p className="small muted" style={{ margin: "6px 0 0" }}>Themes: {cm.themes.join(", ")}</p>
+                        ) : null}
+                      </div>
+                    ))}
+                  <p className="small muted" style={{ margin: "6px 0 0" }}>
+                    &quot;Add to report&quot; marks a verbatim for inclusion in generated reports —
+                    always attributed to the stakeholder group only, never to an individual. Themes
+                    you type here (saved when you click away) build the evidenced theme tables in
+                    each report&apos;s pillar chapters.
+                  </p>
+                </>
+              );
+            })()}
+
+            {canManage ? (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 18 }}>
+                {drawer.r.flag !== "review" ? (
+                  <Button variant="ghost" size="sm" disabled={busy} onClick={() => { setRespState([drawer.id], { flag: "review" }); setDrawer(null); }}>⚑ Flag for review</Button>
+                ) : (
+                  <Button variant="ghost" size="sm" disabled={busy} onClick={() => { setRespState([drawer.id], { flag: null }); setDrawer(null); }}>Clear flag</Button>
+                )}
+                <Button variant="ghost" size="sm" disabled={busy} onClick={() => { setRespState([drawer.id], { valid: false, flag: "test" }); setDrawer(null); }}>Mark as test</Button>
+                {drawer.r.valid ? (
+                  <Button size="sm" disabled={busy} onClick={() => { setRespState([drawer.id], { valid: false, flag: null }); setDrawer(null); }}>Exclude from results</Button>
+                ) : (
+                  <Button size="sm" disabled={busy} onClick={() => { setRespState([drawer.id], { valid: true, flag: null }); setDrawer(null); }}>Restore to results</Button>
+                )}
+              </div>
+            ) : null}
+          </div>
+        </>
+      ) : null}
     </Shell>
   );
 }

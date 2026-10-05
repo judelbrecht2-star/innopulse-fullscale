@@ -267,7 +267,11 @@ requires the user to finish the password submission.
 
 Live signed-in preview reads verified the two existing campaign cycles and the
 open campaign's aggregate results, comparison context and protected stakeholder
-cells. No response text was opened and no assessment submissions or reports
+cells. Also verified action recommendations in both cycles. That check found
+selectors changed the visible cycle without updating the address, so refresh
+could reopen the previous cycle. All five workflow selectors now update the
+campaign parameter while preserving other filters and anchors; regression tests
+cover the earlier-cycle reload and query continuity. No response text was opened and no assessment submissions or reports
 were created. The live table exposed misleading copy: a five-person group was
 hidden for complementary suppression yet labelled as waiting for five people.
 The updated label explains that additional cells can be hidden to stop protected
@@ -284,7 +288,7 @@ capped synthetic database, including 1,040 respondents, 2,000-answer batches,
 later-page failures, failed comment saves, missing membership and the absolute
 owner comment lock. Three account-screen render regressions additionally verify
 password controls without membership, preference-service failure, and rejection
-of an unverifiable session. The updated suite passes **163 tests in 19 files**; the
+of an unverifiable session. The updated suite passes **165 tests in 19 files**; the
 production build and zero-vulnerability production dependency audit pass.
 These backend code changes have **not been deployed** to Supabase.
 

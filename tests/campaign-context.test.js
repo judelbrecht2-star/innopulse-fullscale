@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { defaultCampaign, campaignHref } from "../app/lib/campaign-context";
+import { defaultCampaign, campaignHref, campaignSelectionHref } from "../app/lib/campaign-context";
 
 const campaigns = [
   { id: "sandbox", status: "open", is_sandbox: true },
@@ -16,4 +16,13 @@ describe("campaign continuity", () => {
   it("prefers collected official evidence when no official cycle is open", () => expect(defaultCampaign(campaigns.filter(c => c.id !== "open")).id).toBe("closed"));
   it("handles an empty organisation", () => expect(defaultCampaign([])).toBeNull());
   it("encodes a campaign ID for workflow links", () => expect(campaignHref("/reports", "a&b")).toBe("/reports?campaign=a%26b"));
+  it("retains the selected earlier cycle after a refresh", () => {
+    const href = campaignSelectionHref("https://example.test/insights/interventions?campaign=open", "closed");
+    const requested = new URL(href, "https://example.test").searchParams.get("campaign");
+    expect(defaultCampaign(campaigns, requested).id).toBe("closed");
+  });
+  it("preserves unrelated filters and anchors without adding a duplicate campaign parameter", () => {
+    expect(campaignSelectionHref("https://example.test/reports?filter=ready&campaign=open#versions", "a&b"))
+      .toBe("/reports?filter=ready&campaign=a%26b#versions");
+  });
 });

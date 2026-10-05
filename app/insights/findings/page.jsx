@@ -48,7 +48,7 @@ function Chip({ label, count, on, color, onClick }) {
 }
 
 import { listOrgCampaigns } from "../../lib/campaign-data";
-import { defaultCampaign, requestedCampaignId, campaignHref } from "../../lib/campaign-context";
+import { defaultCampaign, requestedCampaignId, setCampaignUrl, campaignHref } from "../../lib/campaign-context";
 
 import CampaignWorkflow from "../../components/campaign-workflow";
 
@@ -270,7 +270,7 @@ export default function FindingsWorkbench() {
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <Button variant="ghost" onClick={exportEvidence} disabled={!findings.length}><Download className="inline size-4 -mt-0.5" /> Export evidence</Button>
-          <NativeSelect aria-label="Campaign" value={sel} disabled={busy} onChange={(e) => setSel(e.target.value)} style={{ width: "auto", fontWeight: 600 }}>
+          <NativeSelect aria-label="Campaign" value={sel} disabled={busy} onChange={(e) => { setCampaignUrl(e.target.value); setSel(e.target.value); }} style={{ width: "auto", fontWeight: 600 }}>
             {campaigns.map((c) => <NativeSelectOption key={c.id} value={c.id}>{c.is_sandbox ? "[Sandbox] " : ""}{c.name}</NativeSelectOption>)}
           </NativeSelect>
         </div>
