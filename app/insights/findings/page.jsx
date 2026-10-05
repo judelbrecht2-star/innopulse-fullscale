@@ -1,4 +1,5 @@
 "use client";
+import { csvEsc } from "../../lib/csv";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -13,7 +14,6 @@ import { Badge } from "@/components/ui/badge";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { ArrowRight, Check, Download } from "iconoir-react";
 
-function csvEsc(v) { const s = String(v ?? ""); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
 const PRI = { 3: "P3 · Urgent", 2: "P2 · Material", 1: "P1 · Monitor" };
 const PRIC = { 3: "var(--primary)", 2: "var(--amber, #b7791f)", 1: "var(--muted)" };
 const ISO_LABEL = { 4: "Context", 5: "Leadership", 6: "Planning", 7: "Support", 8: "Operation", 9: "Performance evaluation", 10: "Improvement" };
@@ -47,14 +47,23 @@ function Chip({ label, count, on, color, onClick }) {
   );
 }
 
+import { listOrgCampaigns } from "../../lib/campaign-data";
+import { defaultCampaign, requestedCampaignId, setCampaignUrl, campaignHref } from "../../lib/campaign-context";
+
+import CampaignWorkflow from "../../components/campaign-workflow";
+
+import DataState from "../../components/data-state";
+
 export default function FindingsWorkbench() {
   const router = useRouter();
+  const [initialLoading, setInitialLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [campaigns, setCampaigns] = useState([]);
   const [sel, setSel] = useState("");
   const [results, setResults] = useState(null);
   const [reviews, setReviews] = useState({}); // rule_id -> reviewed_at
   const [err, setErr] = useState("");
+  const [saveError, setSaveError] = useState("");
   const [q, setQ] = useState("");
   const [fPri, setFPri] = useState(0); // 0=all
   const [fClass, setFClass] = useState("all");
@@ -69,34 +78,40 @@ export default function FindingsWorkbench() {
 
   useEffect(() => {
     (async () => {
+      try {
       const { data: u } = await sb().auth.getUser();
       if (!u.user) { router.replace("/login"); return; }
       setUser(u.user);
-      const { data: cs } = await sb().from("fs_campaigns")
-        .select("id, name, status, created_at, is_sandbox").order("created_at", { ascending: false });
+      const { campaigns: cs } = await listOrgCampaigns(u.user.id, "id, name, status, created_at, is_sandbox");
       setCampaigns(cs || []);
-      const target = (cs || []).find((c) => c.status === "open") || (cs || [])[0];
+      const target = defaultCampaign(cs, requestedCampaignId());
       if (target) setSel(target.id);
+      } catch (ex) { setErr(ex.message || "Could not load your workspace. Please try again."); }
+      finally { setInitialLoading(false); }
     })();
   }, [router]);
 
-  const load = useCallback(async (cid) => {
+  const load = useCallback(async (cid, signal) => {
     if (!cid) return;
     setResults(null); setErr(""); setCur(null); setJevEvidence({}); setJevStatus("idle"); setJevMatches({}); setMatchStatus({});
     const { data: sess } = await sb().auth.getSession();
     const jwt = sess.session?.access_token;
-    if (!jwt) return;
+    if (!jwt) { setErr("Your session expired. Sign in again to review findings."); return; }
     try {
-      const [r, { data: revs }] = await Promise.all([
-        fetch(`${FN_BASE}/fs-results?campaign_id=${cid}&detail=1`, { headers: { Authorization: `Bearer ${jwt}` } }),
+      const [r, reviewResponse] = await Promise.all([
+        fetch(`${FN_BASE}/fs-results?campaign_id=${cid}&detail=1`, { signal, headers: { Authorization: `Bearer ${jwt}` } }),
         sb().from("fs_finding_reviews").select("rule_id, reviewed_at, note_contradictory, note_alternative").eq("campaign_id", cid),
       ]);
-      if (!r.ok) { setErr("Could not load results."); return; }
-      setResults(await r.json());
-      setReviews(Object.fromEntries((revs || []).map((x) => [x.rule_id, x])));
-    } catch { setErr("Could not load results."); }
+      if (signal?.aborted) return;
+      if (!r.ok) throw new Error("Could not load results.");
+      if (reviewResponse.error) throw reviewResponse.error;
+      const data = await r.json();
+      if (signal?.aborted) return;
+      setResults(data);
+      setReviews(Object.fromEntries((reviewResponse.data || []).map((x) => [x.rule_id, x])));
+    } catch { if (!signal?.aborted) setErr("Could not load results."); }
   }, []);
-  useEffect(() => { load(sel); }, [sel, load]);
+  useEffect(() => { const controller = new AbortController(); load(sel, controller.signal); return () => controller.abort(); }, [sel, load]);
 
   useEffect(() => {
     if (!results || !sel) return;
@@ -166,24 +181,34 @@ export default function FindingsWorkbench() {
       : [3, 2, 1].map((s) => ({ key: s, label: PRI[s], color: PRIC[s], items: filtered.filter((f) => f.severity === s) }));
 
   async function toggleReview(f) {
-    setBusy(true);
+    if (busy) return;
+    setBusy(true); setSaveError("");
+    try {
+    let response;
     if (reviews[f.id]) {
-      await sb().from("fs_finding_reviews").delete().eq("campaign_id", sel).eq("rule_id", f.id);
+      response = await sb().from("fs_finding_reviews").delete().eq("campaign_id", sel).eq("rule_id", f.id);
     } else {
-      await sb().from("fs_finding_reviews").upsert(
+      response = await sb().from("fs_finding_reviews").upsert(
         { campaign_id: sel, rule_id: f.id, reviewed_by: user.id },
         { onConflict: "campaign_id,rule_id" });
     }
-    const { data: revs } = await sb().from("fs_finding_reviews").select("rule_id, reviewed_at, note_contradictory, note_alternative").eq("campaign_id", sel);
+    if (response.error) throw response.error;
+    const { data: revs, error } = await sb().from("fs_finding_reviews").select("rule_id, reviewed_at, note_contradictory, note_alternative").eq("campaign_id", sel);
+    if (error) throw error;
     setReviews(Object.fromEntries((revs || []).map((x) => [x.rule_id, x])));
-    setBusy(false);
+    } catch (ex) { setSaveError("Could not confirm the review was saved. " + (ex.message || "Please try again.")); }
+    finally { setBusy(false); }
   }
 
   async function saveNote(f, field, value) {
     const v = value.trim().slice(0, 600) || null;
     if ((reviews[f.id]?.[field] || null) === v) return;
-    await sb().from("fs_finding_reviews").update({ [field]: v }).eq("campaign_id", sel).eq("rule_id", f.id);
+    setSaveError("");
+    try {
+    const { error } = await sb().from("fs_finding_reviews").update({ [field]: v }).eq("campaign_id", sel).eq("rule_id", f.id);
+    if (error) throw error;
     setReviews((rv) => ({ ...rv, [f.id]: { ...rv[f.id], [field]: v } }));
+    } catch (ex) { setSaveError("This note could not be saved. Keep a copy and try again. " + (ex.message || "")); }
   }
 
   async function matchApprovedInterventions(finding) {
@@ -231,9 +256,13 @@ export default function FindingsWorkbench() {
 
   const chipCls = (k) => k === CLASS.OBS ? "teal" : k === CLASS.SUP ? "draft" : "closed";
 
+  if (initialLoading || err || !campaigns.length || (sel && !results)) return <Shell active="insights" user={user} campaignId={sel}><DataState loading={initialLoading || (Boolean(sel) && !results && !err)} error={err} empty={!campaigns.length} retry={() => window.location.reload()} /></Shell>;
+
   return (
-    <Shell active="insights" user={user}>
-      <div className="crumbs"><Link href="/insights">Insights</Link> / <b>Automatic findings</b></div>
+    <Shell active="insights" user={user} campaignId={sel}>
+      <CampaignWorkflow campaign={campaigns.find((c) => c.id === sel)} active="insights" />
+      {saveError ? <div role="alert" className="err">{saveError}</div> : null}
+      <div className="crumbs"><Link href={campaignHref("/insights", sel)}>Insights</Link> / <b>Automatic findings</b></div>
       <div className="pagehead">
         <div>
           <h1>Automatic findings</h1>
@@ -241,7 +270,7 @@ export default function FindingsWorkbench() {
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <Button variant="ghost" onClick={exportEvidence} disabled={!findings.length}><Download className="inline size-4 -mt-0.5" /> Export evidence</Button>
-          <NativeSelect value={sel} onChange={(e) => setSel(e.target.value)} style={{ width: "auto", fontWeight: 600 }}>
+          <NativeSelect aria-label="Campaign" value={sel} disabled={busy} onChange={(e) => { setCampaignUrl(e.target.value); setSel(e.target.value); }} style={{ width: "auto", fontWeight: 600 }}>
             {campaigns.map((c) => <NativeSelectOption key={c.id} value={c.id}>{c.is_sandbox ? "[Sandbox] " : ""}{c.name}</NativeSelectOption>)}
           </NativeSelect>
         </div>
@@ -407,7 +436,8 @@ export default function FindingsWorkbench() {
               {(() => {
                 const status = matchStatus[active.id] || "idle";
                 const result = jevMatches[active.id];
-                return (
+
+  return (
                   <div style={{ border: "1px solid var(--line)", background: "#fff", borderRadius: 12, padding: "12px 14px", marginBottom: 14 }}>
                     <div className="small" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontWeight: 800 }}>
                       AI-assisted next action

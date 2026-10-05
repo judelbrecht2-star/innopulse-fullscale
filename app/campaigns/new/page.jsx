@@ -45,16 +45,20 @@ export default function NewCampaign() {
 
   useEffect(() => {
     (async () => {
+      try {
       const { data: u } = await sb().auth.getUser();
       if (!u.user) { router.replace("/login"); return; }
       setUser(u.user);
       const mem = await activeMembership(u.user.id); // P0-3
-      if (mem) { setOrg(mem.fs_orgs); setRole(mem.role); }
+      if (!mem) throw new Error("Your account is not linked to an organisation. Ask your workspace owner to add you.");
+      setOrg(mem.fs_orgs); setRole(mem.role);
       // F3: campaigns choose their questionnaire version — no more hardcoded v1.0
-      const { data: vs } = await sb().from("fs_questionnaire_versions")
+      const { data: vs, error: versionError } = await sb().from("fs_questionnaire_versions")
         .select("id, version").order("created_at", { ascending: false });
+      if (versionError) throw versionError;
       setVersions(vs || []);
       if (vs && vs.length) setVerId(vs[0].id);
+      } catch (ex) { setErr(ex.message || "Could not load campaign setup."); }
     })();
   }, [router]);
 
@@ -63,6 +67,7 @@ export default function NewCampaign() {
   async function create(e) {
     e.preventDefault();
     setErr("");
+    if (busy || !org || !canCreate) return;
     const chosen = GROUP_DEFS.filter((g) => groups[g.type].on);
     if (!name.trim()) { setErr("Give the campaign a name."); return; }
     if (chosen.length === 0) { setErr("Choose at least one stakeholder group."); return; }

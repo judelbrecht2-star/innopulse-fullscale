@@ -1,4 +1,5 @@
 "use client";
+import { csvEsc } from "../lib/csv";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -21,13 +22,17 @@ const TYPES = {
   results_csv: { label: "Results", pill: "draft", desc: "Group scores by pillar, CSV" },
   questions_csv: { label: "Questions", pill: "draft", desc: "Question-level means by group, CSV" },
 };
-function csvEsc(v) { const s = String(v ?? ""); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
 function dl(name, rows) {
   const csv = rows.map((r) => r.map(csvEsc).join(",")).join("\r\n");
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
   a.download = name; a.click();
 }
+
+import { listOrgCampaigns, campaignRows } from "../lib/campaign-data";
+import { defaultCampaign, requestedCampaignId, setCampaignUrl } from "../lib/campaign-context";
+
+import CampaignWorkflow from "../components/campaign-workflow";
 
 export default function Reports() {
   const router = useRouter();
@@ -42,19 +47,25 @@ export default function Reports() {
   const [q, setQ] = useState("");
   const [fCamp, setFCamp] = useState("all");
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const { data: u } = await sb().auth.getUser();
-    if (!u.user) { router.replace("/login"); return; }
-    setUser(u.user);
-    const [{ data: cs }, { data: rs }, { data: ip }] = await Promise.all([
-      sb().from("fs_campaigns").select("id, name, status, created_at, client_context, engagement_objective, prior_campaign_id, is_sandbox").order("created_at", { ascending: false }),
-      sb().from("fs_reports").select("*").order("created_at", { ascending: false }),
-      sb().from("fs_interpretations").select("scope, band, body, version"),
-    ]);
-    setCamps(cs || []); setReports(rs || []); setInterps(ip || []);
-    if (cs?.length) setGenFor(cs[0].id);
+    setLoading(true); setErr("");
+    try {
+      const { data: u } = await sb().auth.getUser();
+      if (!u.user) { router.replace("/login"); return; }
+      setUser(u.user);
+      const { campaigns: cs } = await listOrgCampaigns(u.user.id, "id, name, status, created_at, client_context, engagement_objective, prior_campaign_id, is_sandbox");
+      const [rs, ip] = await Promise.all([
+        campaignRows("fs_reports", "*", cs),
+        sb().from("fs_interpretations").select("scope, band, body, version"),
+      ]);
+      if (ip.error) throw ip.error;
+      setCamps(cs); setReports(rs.sort((a,b) => new Date(b.created_at)-new Date(a.created_at))); setInterps(ip.data || []);
+      setGenFor((current) => defaultCampaign(cs, current || requestedCampaignId())?.id || "");
+    } catch (ex) { setErr(ex.message || "Could not load reports. Please try again."); }
+    finally { setLoading(false); }
   }, [router]);
   useEffect(() => { load(); }, [load]);
 
@@ -64,13 +75,18 @@ export default function Reports() {
 
   // load authored content when the selected campaign changes
   useEffect(() => {
+    let cancelled = false;
+    setNotes({}); setSaved(false);
     (async () => {
       if (!genFor) return;
       const c = camps.find((x) => x.id === genFor);
       setContent({ client_context: c?.client_context || "", engagement_objective: c?.engagement_objective || "" });
-      const { data: pn } = await sb().from("fs_pillar_notes").select("pillar, body").eq("campaign_id", genFor);
+      const { data: pn, error } = await sb().from("fs_pillar_notes").select("pillar, body").eq("campaign_id", genFor);
+      if (cancelled) return;
+      if (error) { setErr("Could not load report notes. " + error.message); return; }
       setNotes(Object.fromEntries((pn || []).map((x) => [x.pillar, x.body])));
     })();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [genFor, camps.length]);
 
@@ -120,13 +136,16 @@ export default function Reports() {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess2.session?.access_token}` },
         body: JSON.stringify({ action, campaign_id: genFor }),
-      }).then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
-      const [{ data: revs }, { data: pn }, vb, th] = await Promise.all([
+      }).then(async (r) => { if (!r.ok) throw new Error("Could not load report evidence. Please retry before generating a report."); return r.json(); });
+      const [reviewRows, noteRows, vb, th, interventionRows] = await Promise.all([
         sb().from("fs_finding_reviews").select("rule_id, note_contradictory, note_alternative").eq("campaign_id", genFor),
         sb().from("fs_pillar_notes").select("pillar, body").eq("campaign_id", genFor),
         opsCall("report_comments"),
         opsCall("theme_summary"),
+        sb().from("fs_interventions").select("*"),
       ]);
+      if (reviewRows.error || noteRows.error || interventionRows.error) throw reviewRows.error || noteRows.error || interventionRows.error;
+      const revs = reviewRows.data, pn = noteRows.data;
       const revMap = Object.fromEntries((revs || []).map((x) => [x.rule_id, x]));
       const findings = evaluateFindings(d).filter((f) => revMap[f.id])
         .map((f) => ({ ...f, analyst: { contradictory: revMap[f.id].note_contradictory || null, alternative: revMap[f.id].note_alternative || null } }));
@@ -141,6 +160,9 @@ export default function Reports() {
         campaign: d.campaign, org: d.org, pillars: d.pillars, groups: d.groups,
         overall: d.overall, questions: d.questions || null,
         findings, rulebook: "v1.1", engine: "shared-gaps-v1",
+        snapshot_version: 2,
+        intervention_library: interventionRows.data || [],
+        interpretations: interps,
         segments: d.segments || null,
         demographics: d.demographics || null,
         trend,
@@ -205,9 +227,11 @@ export default function Reports() {
   }
 
   async function remove(id) {
+    if (!window.confirm("Delete this saved report version? This cannot be undone. Earlier and later versions are kept.")) return;
     setBusy(true);
-    await sb().from("fs_reports").delete().eq("id", id);
-    await load(); setBusy(false);
+    const { error } = await sb().from("fs_reports").delete().eq("id", id);
+    if (error) setErr(error.message); else await load();
+    setBusy(false);
   }
 
   const filtered = reports.filter((r) => {
@@ -216,8 +240,12 @@ export default function Reports() {
     return true;
   });
 
+  if (loading) return <Shell active="reports" user={user} campaignId={genFor}><p role="status" className="muted">Loading reports…</p></Shell>;
+  if (err && !camps.length) return <Shell active="reports" user={user} campaignId={genFor}><div role="alert" className="err">{err}</div><Button onClick={load}>Try again</Button></Shell>;
+
   return (
-    <Shell active="reports" user={user}>
+    <Shell active="reports" user={user} campaignId={genFor}>
+      <CampaignWorkflow campaign={selectedCampaign} active="reports" />
       <div className="crumbs"><b>Reports</b></div>
       <div className="pagehead">
         <div>
@@ -225,7 +253,7 @@ export default function Reports() {
           <p className="lead">Turn campaign findings into clear, decision-ready reports.</p>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <NativeSelect value={genFor} onChange={(e) => setGenFor(e.target.value)} style={{ width: "auto", fontWeight: 600 }}>
+          <NativeSelect aria-label="Campaign for report" value={genFor} onChange={(e) => { setCampaignUrl(e.target.value); setGenFor(e.target.value); }} style={{ width: "auto", fontWeight: 600 }}>
             {camps.map((c) => <NativeSelectOption key={c.id} value={c.id}>{c.is_sandbox ? "[Sandbox] " : ""}{c.name}</NativeSelectOption>)}
           </NativeSelect>
           {selectedCampaign?.is_sandbox ? (
@@ -293,7 +321,7 @@ export default function Reports() {
           </NativeSelect>
         </div>
         {!filtered.length ? (
-          <p className="muted small">No reports yet — pick a campaign and use “+ Generate report”. Executive reports open the print-ready view; the other types download live CSV evidence packs.</p>
+          <p className="muted small">No reports match this view. Choose a campaign and generate a report to save a version of its results. Downloads use that saved snapshot.</p>
         ) : (
           <Table>
             <TableHeader><TableRow><TableHead>Report</TableHead><TableHead>Campaign</TableHead><TableHead>Type</TableHead><TableHead>Status</TableHead><TableHead>Created</TableHead><TableHead></TableHead></TableRow></TableHeader>
@@ -309,7 +337,7 @@ export default function Reports() {
                     <Button size="sm" onClick={() => open(r)}>{r.rtype === "executive" ? "View" : "Download"}</Button>{" "}
                     {r.rtype === "executive" && r.snapshot ? (
                       <><Button variant="ghost" size="sm" disabled={busy}
-                        onClick={async () => { setBusy(true); try { await generateWordReport(r, interps); } catch (e) { setErr(String(e.message || e)); } setBusy(false); }}>
+                        onClick={async () => { setBusy(true); try { await generateWordReport(r, r.snapshot?.interpretations || interps); } catch (e) { setErr(String(e.message || e)); } setBusy(false); }}>
                         Word (.docx)</Button>{" "}</>
                     ) : null}
                     <Button variant="ghost" size="sm" disabled={busy} onClick={() => remove(r.id)}>Remove</Button>

@@ -1,4 +1,5 @@
 "use client";
+import { csvEsc } from "../lib/csv";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { sb, FN_BASE } from "../../lib/supabase";
@@ -13,7 +14,6 @@ import { Check, Download, Lock, Plus, ShieldCheck } from "iconoir-react";
 import { effectiveThresholds, gateFor } from "../lib/thresholds";
 
 const PILLAR_NAMES = { sii: "Strategic intent", iem: "Environment", oic: "Capability", ipm: "Process", roi: "Return on innovation" };
-function csvEsc(v) { const s = String(v ?? ""); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
 function ago(ts) {
   const m = Math.round((Date.now() - new Date(ts).getTime()) / 60000);
   if (m < 1) return "just now";
@@ -24,8 +24,17 @@ function ago(ts) {
 }
 function fmt(ts) { return new Date(ts).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); }
 
+import { listOrgCampaigns, campaignRows } from "../lib/campaign-data";
+import { defaultCampaign, requestedCampaignId, setCampaignUrl, campaignHref } from "../lib/campaign-context";
+
+import CampaignWorkflow from "../components/campaign-workflow";
+
+import DataState from "../components/data-state";
+
 export default function Responses() {
   const router = useRouter();
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [role, setRole] = useState("");
   const [campaigns, setCampaigns] = useState([]);
@@ -64,20 +73,24 @@ export default function Responses() {
 
   useEffect(() => {
     (async () => {
+      try {
       const { data: u } = await sb().auth.getUser();
       if (!u.user) { router.replace("/login"); return; }
       setUser(u.user);
-      const { data: cs } = await sb().from("fs_campaigns")
-        .select("id, org_id, name, status, anonymity_threshold, questionnaire_version_id, created_at").order("created_at", { ascending: false });
+      const { campaigns: cs } = await listOrgCampaigns(u.user.id, "id, org_id, name, status, anonymity_threshold, questionnaire_version_id, created_at, is_sandbox");
       setCampaigns(cs || []);
-      const target = (cs || []).find((c) => c.status === "open") || (cs || [])[0];
+      const target = defaultCampaign(cs, requestedCampaignId());
       if (target) setSel(target.id);
+      } catch (ex) { setErr(ex.message || "Could not load your workspace. Please try again."); }
+      finally { setInitialLoading(false); }
     })();
   }, [router]);
 
-  const load = useCallback(async (cid) => {
+  const load = useCallback(async (cid, signal) => {
     if (!cid) return;
-    setErr(""); setChecks({}); setDrawer(null);
+    setDetailsLoading(true);
+    try {
+    setErr(""); setChecks({}); setDrawer(null); setDetail(null); setAggs({}); setComms({}); setGates(null); setGroups([]); setLinks([]); setResps([]); setProgress([]); setRole(""); setFGroup("all");
     const c = campaigns.find((x) => x.id === cid) || null;
     setCampaign(c);
     // F8: the caller's OWN role in THIS campaign's org
@@ -88,15 +101,19 @@ export default function Responses() {
         : { data: null };
       setRole(mem?.role || "");
     }
-    const [{ data: gs }, { data: ls }, { data: rs }, { data: pg }, { data: qv }] = await Promise.all([
-      sb().from("fs_groups").select("id, type, label, target_n").eq("campaign_id", cid),
-      sb().from("fs_links").select("id, group_id, token, mode, active, used_count, created_at").eq("campaign_id", cid),
-      sb().from("fs_responses").select("id, group_id, link_id, submitted_at, valid, flag").eq("campaign_id", cid).order("submitted_at"),
-      sb().from("fs_progress").select("id, group_id, link_id, client_ref, answered, total, started_at, last_seen").eq("campaign_id", cid).order("started_at"),
+    const queries = await Promise.all([
+      campaignRows("fs_groups", "id, type, label, target_n", [{ id: cid }]).then(data => ({ data })),
+      campaignRows("fs_links", "id, group_id, token, mode, active, used_count, created_at", [{ id: cid }]).then(data => ({ data })),
+      campaignRows("fs_responses", "id, group_id, link_id, submitted_at, valid, flag", [{ id: cid }]).then(data => ({ data: data.sort((a, b) => new Date(a.submitted_at) - new Date(b.submitted_at)) })),
+      campaignRows("fs_progress", "id, group_id, link_id, client_ref, answered, total, started_at, last_seen", [{ id: cid }]).then(data => ({ data: data.sort((a, b) => new Date(a.started_at) - new Date(b.started_at)) })),
       c?.questionnaire_version_id
         ? sb().from("fs_questionnaire_versions").select("definition").eq("id", c.questionnaire_version_id).maybeSingle()
         : Promise.resolve({ data: null }),
     ]);
+    if (signal?.aborted) return;
+    const failed = queries.find((q) => q.error);
+    if (failed) throw failed.error;
+    const [gs, ls, rs, pg, qv] = queries.map((q) => q.data);
     setGroups(gs || []); setLinks(ls || []); setResps(rs || []); setProgress(pg || []);
 
     // F10: true served-questionnaire length per group type
@@ -115,12 +132,13 @@ export default function Responses() {
     try {
       const { data: sess } = await sb().auth.getSession();
       const r = await fetch(`${FN_BASE}/fs-responses-ops`, {
-        method: "POST",
+        method: "POST", signal,
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess.session?.access_token}` },
         body: JSON.stringify({ action: "list", campaign_id: cid }),
       });
       if (r.ok) {
         const j = await r.json();
+        if (signal?.aborted) return;
         const a = {}, cmap = {};
         for (const row of j.responses || []) {
           a[row.id] = row.agg || { answered: 0, dk: 0 };
@@ -131,11 +149,13 @@ export default function Responses() {
           score: j.score_threshold ?? j.threshold ?? null,
           comment: j.comment_threshold ?? j.score_threshold ?? j.threshold ?? null,
         });
-      } else { setAggs({}); setComms({}); setGates(null); }
-    } catch { setAggs({}); setComms({}); setGates(null); }
+      } else { throw new Error("Response quality details could not be loaded. Your role may not have access."); }
+    } catch (ex) { if (!signal?.aborted) { setAggs({}); setComms({}); setGates(null); setErr(ex.message || "Could not load response quality details."); } }
+    } catch (ex) { if (!signal?.aborted) setErr(ex.message || "Could not load responses."); }
+    finally { if (!signal?.aborted) setDetailsLoading(false); }
   }, [campaigns]);
 
-  useEffect(() => { load(sel); }, [sel, load]);
+  useEffect(() => { const controller = new AbortController(); load(sel, controller.signal); return () => controller.abort(); }, [sel, load]);
 
   const canManage = role === "owner" || role === "manager";
   const groupById = Object.fromEntries(groups.map((g) => [g.id, g]));
@@ -151,7 +171,7 @@ export default function Responses() {
   resps.forEach((r, i) => {
     const agg = aggs[r.id] || { answered: 0, dk: 0 };
     const dkPct = agg.answered ? Math.round((agg.dk / agg.answered) * 100) : 0;
-    const quality = r.flag === "review" ? "Review" : r.flag === "test" ? "Test" : dkPct > 30 ? "Review" : "Good";
+    const quality = r.flag === "review" ? "Review" : r.flag === "test" ? "Test" : !aggs[r.id] ? "Unavailable" : dkPct > 30 ? "Review" : "Good";
     const status = !r.valid ? (r.flag === "test" ? "Test" : "Excluded") : "Completed";
     const g = groupById[r.group_id];
     rows.push({
@@ -208,11 +228,15 @@ export default function Responses() {
 
   // ----- actions -----
   async function setRespState(ids, patch) {
+    if (busy) return;
     setBusy(true);
-    const { error } = await sb().from("fs_responses").update(patch).in("id", ids);
-    if (error) setErr(error.message);
-    setBusy(false); setChecks({});
-    await load(sel);
+    try {
+      const { error } = await sb().from("fs_responses").update(patch).eq("campaign_id", sel).in("id", ids);
+      if (error) throw error;
+      setChecks({});
+      await load(sel);
+    } catch (ex) { setErr("Could not update these responses. " + (ex.message || "Please try again.")); }
+    finally { setBusy(false); }
   }
   const checkedIds = Object.keys(checks).filter((k) => checks[k]);
   async function copyLink(token) {
@@ -250,8 +274,11 @@ export default function Responses() {
     customer: "rgba(183,121,31,.06)", partner: "rgba(49,110,180,.055)", other: "rgba(122,90,190,.055)",
   };
 
+  if (initialLoading || detailsLoading || !campaigns.length || err) return <Shell active="responses" user={user} campaignId={sel}><DataState loading={initialLoading || detailsLoading} error={err} empty={!campaigns.length} retry={() => window.location.reload()} /></Shell>;
+
   return (
-    <Shell active="responses" user={user}>
+    <Shell active="responses" user={user} campaignId={sel}>
+      <CampaignWorkflow campaign={campaign} active="responses" />
       <div className="crumbs">Responses / <b>{campaign?.name || "—"}</b></div>
       <div className="pagehead">
         <div>
@@ -262,7 +289,7 @@ export default function Responses() {
           <Button variant="ghost" onClick={() => exportCsv(false)}><Download className="inline size-4 -mt-0.5" /> Export responses</Button>
           <Button disabled={!canManage} title={canManage ? "" : "Owners and managers only"}
             onClick={() => { setRemOpen((v) => !v); if (!remGroup && groups.length) setRemGroup(groups[0].id); }}>✈ Send reminders</Button>
-          <NativeSelect value={sel} onChange={(e) => setSel(e.target.value)} style={{ width: "auto", fontWeight: 600 }}>
+          <NativeSelect aria-label="Campaign" value={sel} disabled={busy} onChange={(e) => { setCampaignUrl(e.target.value); setSel(e.target.value); }} style={{ width: "auto", fontWeight: 600 }}>
             {campaigns.map((c) => <NativeSelectOption key={c.id} value={c.id}>{c.name}</NativeSelectOption>)}
           </NativeSelect>
         </div>
@@ -455,7 +482,8 @@ export default function Responses() {
                   passes the comment threshold. This applies to every role, including the owner.
                 </div>
               );
-              return (
+
+  return (
                 <>
                   <div className="vbanner"><ShieldCheck className="inline size-4 -mt-0.5" /> These are the respondent&apos;s verbatim comments — not an AI summary.</div>
 

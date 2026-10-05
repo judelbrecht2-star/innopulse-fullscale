@@ -1,4 +1,5 @@
 "use client";
+import { csvEsc } from "../../lib/csv";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -14,11 +15,17 @@ import { Download } from "iconoir-react";
 import { Check, Plus, WarningTriangle } from "iconoir-react";
 
 const PILLAR_ICON = { sii: "chart", iem: "people", oic: "person", ipm: "gear", roi: "pie" };
-function csvEsc(v) { const s = String(v ?? ""); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+
+import { listOrgCampaigns } from "../../lib/campaign-data";
+import { defaultCampaign, requestedCampaignId, setCampaignUrl, campaignHref } from "../../lib/campaign-context";
+import CampaignWorkflow from "../../components/campaign-workflow";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 
 export default function Interventions() {
   const router = useRouter();
   const [user, setUser] = useState(null);
+  const [campaigns, setCampaigns] = useState([]);
+  const [selCampaign, setSelCampaign] = useState("");
   const [campaign, setCampaign] = useState(null);
   const [results, setResults] = useState(null);
   const [library, setLibrary] = useState([]);
@@ -26,45 +33,64 @@ export default function Interventions() {
   const [outcomes, setOutcomes] = useState([]);
   const [selPillar, setSelPillar] = useState(null); // { kind:'gap'|'band', id }
   const [err, setErr] = useState("");
+  const [saveError, setSaveError] = useState("");
   const [busy, setBusy] = useState(false);
   const [ownerEdit, setOwnerEdit] = useState(null); // string while editing
   const [msEdit, setMsEdit] = useState(null);
 
   const loadActions = useCallback(async (cid) => {
-    const [{ data: plan }, { data: learned }] = await Promise.all([
+    const [plan, learned] = await Promise.all([
       sb().from("fs_actions").select("*").eq("campaign_id", cid).order("created_at"),
       sb().from("fs_intervention_outcomes").select("*").eq("campaign_id", cid).order("updated_at", { ascending: false }),
     ]);
-    setActions(plan || []);
-    setOutcomes(learned || []);
+    if (plan.error || learned.error) throw plan.error || learned.error;
+    setActions(plan.data || []);
+    setOutcomes(learned.data || []);
   }, []);
 
   useEffect(() => {
     (async () => {
-      const { data: u } = await sb().auth.getUser();
-      if (!u.user) { router.replace("/login"); return; }
-      setUser(u.user);
-      const { data: cs } = await sb().from("fs_campaigns")
-        .select("id, name, status, created_at, is_sandbox").order("created_at", { ascending: false });
-      const target = (cs || []).find((c) => c.status === "open") || (cs || [])[0];
-      if (!target) { setErr("No campaigns yet."); return; }
-      setCampaign(target);
-      const { data: sess } = await sb().auth.getSession();
-      const jwt = sess.session?.access_token;
       try {
-        const [r, lib] = await Promise.all([
-          fetch(`${FN_BASE}/fs-results?campaign_id=${target.id}&detail=1`, { headers: { Authorization: `Bearer ${jwt}` } }),
-          sb().from("fs_interventions").select("*"),
-        ]);
-        if (r.ok) setResults(await r.json());
-        setLibrary(lib.data || []);
-        await loadActions(target.id);
-      } catch { setErr("Could not load results."); }
+        const { data: u } = await sb().auth.getUser();
+        if (!u.user) { router.replace("/login"); return; }
+        setUser(u.user);
+        const { campaigns: cs } = await listOrgCampaigns(u.user.id, "id, name, status, created_at, is_sandbox");
+        setCampaigns(cs);
+        const target = defaultCampaign(cs, requestedCampaignId());
+        if (!target) { setErr("No campaigns yet. Create a campaign and collect responses before planning actions."); return; }
+        setSelCampaign(target.id);
+      } catch (ex) { setErr(ex.message || "Could not load campaigns."); }
     })();
-  }, [router, loadActions]);
+  }, [router]);
 
-  if (err) return (<Shell active="insights" user={user}><div className="err">{err}</div></Shell>);
-  if (!campaign || !results) return (<Shell active="insights" user={user}><p className="muted">Loading…</p></Shell>);
+  useEffect(() => {
+    if (!selCampaign) return;
+    const controller = new AbortController();
+    setCampaign(campaigns.find((c) => c.id === selCampaign));
+    setResults(null); setActions([]); setOutcomes([]); setSelPillar(null); setOwnerEdit(null); setMsEdit(null); setErr(""); setSaveError("");
+    (async () => {
+      try {
+        const { data: sess } = await sb().auth.getSession();
+        const jwt = sess.session?.access_token;
+        if (!jwt) throw new Error("Your session expired. Sign in again to view actions.");
+        const [r, lib, plan, learned] = await Promise.all([
+          fetch(`${FN_BASE}/fs-results?campaign_id=${selCampaign}&detail=1`, { signal: controller.signal, headers: { Authorization: `Bearer ${jwt}` } }),
+          sb().from("fs_interventions").select("*"),
+          sb().from("fs_actions").select("*").eq("campaign_id", selCampaign).order("created_at"),
+          sb().from("fs_intervention_outcomes").select("*").eq("campaign_id", selCampaign).order("updated_at", { ascending: false }),
+        ]);
+        if (!r.ok) throw new Error("Could not load campaign results. Please try again.");
+        if (lib.error || plan.error || learned.error) throw lib.error || plan.error || learned.error;
+        const data = await r.json();
+        if (controller.signal.aborted) return;
+        setResults(data); setLibrary(lib.data || []); setActions(plan.data || []); setOutcomes(learned.data || []);
+      } catch (ex) { if (!controller.signal.aborted) setErr(ex.message || "Could not load results."); }
+    })();
+    return () => controller.abort();
+  }, [selCampaign, campaigns]);
+
+  if (err) return (<Shell active="insights" user={user} campaignId={selCampaign}><div role="alert" className="err">{err}</div><Button variant="outline" onClick={() => window.location.reload()}>Try again</Button></Shell>);
+  if (!campaign || !results) return (<Shell active="insights" user={user} campaignId={selCampaign}><p className="muted">Loading…</p></Shell>);
 
   const pillars = results.pillars || [];
   const pillarById = Object.fromEntries(pillars.map((p) => [p.id, p]));
@@ -108,64 +134,75 @@ export default function Interventions() {
 
   const actFor = (idx) => actions.find((a) => a.intervention_id === curEntry?.id && a.action_index === idx);
   const milestones = actions.filter((a) => a.is_milestone && a.pillar === curPillar?.id);
-  const planned = actions.some((a) => !a.is_milestone);
+  const recommended = [...gaps, ...opps].flatMap((o) => (o.entry.actions || []).map((_, index) => ({ intervention: o.entry.id, index })));
+  const planned = recommended.length > 0 && recommended.every((r) => actions.some((a) => a.intervention_id === r.intervention && a.action_index === r.index));
   const savedOwner = actions.find((a) => a.intervention_id === curEntry?.id && a.owner)?.owner || null;
 
+  async function saveChange(work) {
+    if (busy) return;
+    setBusy(true); setSaveError("");
+    try { await work(); await loadActions(campaign.id); }
+    catch (ex) { setSaveError("Could not confirm your changes were saved. " + (ex.message || "Please try again.")); }
+    finally { setBusy(false); }
+  }
   async function ensureRow(idx, patch = {}) {
     if (!curEntry || !curPillar) return;
     const existing = actFor(idx);
-    if (existing) {
-      await sb().from("fs_actions").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", existing.id);
-    } else {
-      await sb().from("fs_actions").insert({
-        campaign_id: campaign.id, pillar: curPillar.id, intervention_id: curEntry.id,
-        action_index: idx, title: (curEntry.actions || [])[idx] || "", created_by: user.id,
-        ...patch,
-      });
-    }
-    await loadActions(campaign.id);
+    const response = existing
+      ? await sb().from("fs_actions").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", existing.id).eq("campaign_id", campaign.id)
+      : await sb().from("fs_actions").insert({
+          campaign_id: campaign.id, pillar: curPillar.id, intervention_id: curEntry.id,
+          action_index: idx, title: (curEntry.actions || [])[idx] || "", created_by: user.id, ...patch,
+        });
+    if (response.error) throw response.error;
   }
   async function cycleStatus(idx) {
-    const cur = actFor(idx)?.status || "not_started";
-    const next = cur === "not_started" ? "in_progress" : cur === "in_progress" ? "done" : "not_started";
-    await ensureRow(idx, { status: next });
+    const current = actFor(idx)?.status || "not_started";
+    const next = current === "not_started" ? "in_progress" : current === "in_progress" ? "done" : "not_started";
+    await saveChange(() => ensureRow(idx, { status: next }));
   }
   async function toggleDone(idx, checked) {
-    await ensureRow(idx, { status: checked ? "done" : "not_started" });
+    await saveChange(() => ensureRow(idx, { status: checked ? "done" : "not_started" }));
   }
   async function addAllToPlan() {
-    setBusy(true);
-    const rows = [];
-    for (const g of gaps) (g.entry.actions || []).forEach((t, i) => {
-      if (!actions.some((a) => a.intervention_id === g.entry.id && a.action_index === i))
-        rows.push({ campaign_id: campaign.id, pillar: g.p.id, intervention_id: g.entry.id, action_index: i, title: t, created_by: user.id });
+    await saveChange(async () => {
+      const rows = [];
+      for (const opportunity of [...gaps, ...opps]) (opportunity.entry.actions || []).forEach((title, index) => {
+        if (!actions.some((a) => a.intervention_id === opportunity.entry.id && a.action_index === index)
+            && !rows.some((a) => a.intervention_id === opportunity.entry.id && a.action_index === index)) {
+          rows.push({ campaign_id: campaign.id, pillar: opportunity.p.id, intervention_id: opportunity.entry.id, action_index: index, title, created_by: user.id });
+        }
+      });
+      if (rows.length) {
+        const { error } = await sb().from("fs_actions").insert(rows);
+        if (error) throw error;
+      }
     });
-    for (const o of opps) (o.entry.actions || []).forEach((t, i) => {
-      if (!actions.some((a) => a.intervention_id === o.entry.id && a.action_index === i))
-        rows.push({ campaign_id: campaign.id, pillar: o.p.id, intervention_id: o.entry.id, action_index: i, title: t, created_by: user.id });
-    });
-    if (rows.length) {
-      const { error } = await sb().from("fs_actions").insert(rows);
-      if (error) setErr(error.message);
-    }
-    await loadActions(campaign.id);
-    setBusy(false);
   }
   async function saveOwner() {
     if (!curEntry) return;
-    setBusy(true);
-    for (let i = 0; i < (curEntry.actions || []).length; i++) await ensureRow(i, { owner: ownerEdit || null });
-    setOwnerEdit(null); setBusy(false);
+    await saveChange(async () => {
+      for (let i = 0; i < (curEntry.actions || []).length; i++) await ensureRow(i, { owner: ownerEdit?.trim() || null });
+      setOwnerEdit(null);
+    });
   }
   async function saveMilestone() {
     if (!msEdit?.trim() || !curPillar) { setMsEdit(null); return; }
-    setBusy(true);
-    await sb().from("fs_actions").insert({
-      campaign_id: campaign.id, pillar: curPillar.id, title: msEdit.trim(),
-      is_milestone: true, created_by: user.id,
+    await saveChange(async () => {
+      const { error } = await sb().from("fs_actions").insert({
+        campaign_id: campaign.id, pillar: curPillar.id, title: msEdit.trim(),
+        is_milestone: true, created_by: user.id,
+      });
+      if (error) throw error;
+      setMsEdit(null);
     });
-    await loadActions(campaign.id);
-    setMsEdit(null); setBusy(false);
+  }
+  async function toggleMilestone(milestone, checked) {
+    await saveChange(async () => {
+      const { error } = await sb().from("fs_actions").update({ status: checked ? "done" : "not_started" })
+        .eq("id", milestone.id).eq("campaign_id", campaign.id);
+      if (error) throw error;
+    });
   }
   async function saveOutcome(event) {
     event.preventDefault();
@@ -176,7 +213,6 @@ export default function Interventions() {
     const observed = form.get("observed_score");
     const reviewDueAt = String(form.get("review_due_at") || "") || null;
     const assessment = outcomeAssessment({ baseline, target, observed, reviewDueAt });
-    setBusy(true); setErr("");
     const payload = {
       campaign_id: campaign.id,
       intervention_id: curEntry.id,
@@ -192,9 +228,10 @@ export default function Interventions() {
       created_by: curOutcome?.created_by || user.id,
       updated_at: new Date().toISOString(),
     };
-    const { error } = await sb().from("fs_intervention_outcomes").upsert(payload, { onConflict: "campaign_id,intervention_id" });
-    if (error) setErr(error.message); else await loadActions(campaign.id);
-    setBusy(false);
+    await saveChange(async () => {
+      const { error } = await sb().from("fs_intervention_outcomes").upsert(payload, { onConflict: "campaign_id,intervention_id" });
+      if (error) throw error;
+    });
   }
   function exportRoadmap() {
     const rows = [["Priority", "Type", "Pillar", "Groups compared", "Action / milestone", "Status", "Owner", "Horizon", "Measure", "ISO readiness", "Services", "Outcome status", "Baseline score", "Target score", "Observed score", "Review due", "Learning note"]];
@@ -222,8 +259,14 @@ export default function Interventions() {
   const horizonBig = curEntry?.horizon?.match(/(\d+)\s*-?\s*day/gi)?.pop()?.match(/\d+/)?.[0];
 
   return (
-    <Shell active="insights" user={user}>
-      <div className="crumbs"><Link href="/insights">Insights</Link> / <b>{campaign.name}</b></div>
+    <Shell active="insights" user={user} campaignId={selCampaign}>
+      <CampaignWorkflow campaign={campaign} active="actions" />
+      {saveError ? <div className="err" role="alert">{saveError}</div> : null}
+      <div className="flex flex-wrap items-center gap-3 mb-5"><label htmlFor="action-campaign">Campaign</label>
+        <NativeSelect id="action-campaign" value={selCampaign} disabled={busy} onChange={(e) => { setCampaignUrl(e.target.value); setSelCampaign(e.target.value); }} style={{ width: "auto", maxWidth: "100%" }}>
+          {campaigns.map((c) => <NativeSelectOption key={c.id} value={c.id}>{c.is_sandbox ? "[Sandbox] " : ""}{c.name}</NativeSelectOption>)}
+        </NativeSelect></div>
+      <div className="crumbs"><Link href={campaignHref("/insights", selCampaign)}>Insights</Link> / <b>{campaign.name}</b></div>
       <div className="pagehead">
         <div>
           <h1>Recommended interventions</h1>
@@ -231,7 +274,7 @@ export default function Interventions() {
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <Button variant="ghost" onClick={exportRoadmap}><Download className="inline size-4 -mt-0.5" /> Export roadmap</Button>
-          <Button disabled={busy || planned} onClick={addAllToPlan}>
+          <Button disabled={busy || planned || !recommended.length} onClick={addAllToPlan}>
             {planned ? <>In action plan <Check className="inline size-4 -mt-0.5" /></> : <><Plus className="inline size-4 -mt-0.5" /> Add to action plan</>}
           </Button>
         </div>
@@ -270,7 +313,7 @@ export default function Interventions() {
       ) : null}
 
       {!cur ? (
-        <div className="card"><p className="muted">Recommendations appear once at least two stakeholder groups clear the anonymity threshold with enough shared questions to compare fairly.</p></div>
+        <div className="card"><p className="muted">Recommendations appear when privacy-eligible scores or comparable stakeholder gaps match the approved intervention library.</p></div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0,2fr) minmax(280px,1fr)", gap: 18, alignItems: "start" }} className="ivgrid">
           <style>{`@media(max-width:1020px){.ivgrid{grid-template-columns:1fr!important}}`}</style>
@@ -307,10 +350,10 @@ export default function Interventions() {
                 const st = a?.status || "not_started";
                 return (
                   <div className="act" key={i}>
-                    <input type="checkbox" checked={st === "done"} onChange={(e) => toggleDone(i, e.target.checked)} />
+                    <input type="checkbox" aria-label={t} disabled={busy} checked={st === "done"} onChange={(e) => toggleDone(i, e.target.checked)} />
                     <span className="numchip sm" style={{ background: "transparent", color: "var(--primary)", border: "none", fontSize: 15 }}>{i + 1}.</span>
                     <span className="txt">{t}</span>
-                    <button className={"stchip " + st} onClick={() => cycleStatus(i)}>
+                    <button disabled={busy} aria-label={"Change status: " + t} className={"stchip " + st} onClick={() => cycleStatus(i)}>
                       {st === "not_started" ? "Not started" : st === "in_progress" ? "In progress" : "Done"}
                     </button>
                   </div>
@@ -318,7 +361,7 @@ export default function Interventions() {
               })}
               {milestones.map((m) => (
                 <div className="act" key={m.id} style={{ borderStyle: "dashed" }}>
-                  <input type="checkbox" checked={m.status === "done"} onChange={async (e) => { await sb().from("fs_actions").update({ status: e.target.checked ? "done" : "not_started" }).eq("id", m.id); loadActions(campaign.id); }} />
+                  <input type="checkbox" aria-label={m.title} disabled={busy} checked={m.status === "done"} onChange={(e) => toggleMilestone(m, e.target.checked)} />
                   <span className="small" style={{ fontWeight: 800, color: "var(--muted)" }}>⚑</span>
                   <span className="txt">{m.title}</span>
                   <span className={"stchip " + m.status} style={{ cursor: "default" }}>{m.status === "done" ? "Done" : "Milestone"}</span>

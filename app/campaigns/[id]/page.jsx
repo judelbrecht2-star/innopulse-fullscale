@@ -1,4 +1,5 @@
 "use client";
+import { csvEsc } from "../../lib/csv";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -20,10 +21,6 @@ function randToken() {
   crypto.getRandomValues(b);
   return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
 }
-function csvEsc(v) {
-  const s = String(v ?? "");
-  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-}
 function downloadCsv(name, rows) {
   const csv = rows.map((r) => r.map(csvEsc).join(",")).join("\r\n");
   const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
@@ -33,6 +30,8 @@ function downloadCsv(name, rows) {
   a.click();
   URL.revokeObjectURL(a.href);
 }
+
+import CampaignWorkflow from "../../components/campaign-workflow";
 
 export default function Campaign() {
   const { id } = useParams();
@@ -68,6 +67,7 @@ export default function Campaign() {
   const [ready, setReady] = useState(null); // server-backed readiness checks
 
   const load = useCallback(async () => {
+    try {
     const { data: u } = await sb().auth.getUser();
     if (!u.user) { router.replace("/login"); return; }
     setUser(u.user);
@@ -110,6 +110,7 @@ export default function Campaign() {
         if (r.ok) setResults(await r.json());
       } catch { /* best-effort */ }
     }
+    } catch (ex) { setErr(ex.message || "Could not load campaign details. Please try again."); }
   }, [id, router, uniqGroup]);
 
   useEffect(() => { load(); }, [load]);
@@ -289,8 +290,9 @@ export default function Campaign() {
     downloadCsv(`${d.campaign.name.replace(/[^\w]+/g, "-")}-questions.csv`, rows);
   }
 
-  if (err && !c) return (<Shell active="campaigns" user={user}><div className="err">{err}</div></Shell>);
-  if (!c) return (<Shell active="campaigns" user={user}><p className="muted">Loading…</p></Shell>);
+  if (err && !c) return (<Shell active="campaigns" user={user} campaignId={id}><div className="err">{err}</div></Shell>);
+  if (err && !c) return <Shell active="campaigns" user={user}><div role="alert" className="err">{err}</div><Button onClick={load}>Try again</Button></Shell>;
+  if (!c) return (<Shell active="campaigns" user={user} campaignId={id}><p className="muted">Loading…</p></Shell>);
 
   const linkByGroup = {};
   for (const l of links) if (l.mode === "group" && l.active && !linkByGroup[l.group_id]) linkByGroup[l.group_id] = l;
@@ -307,7 +309,8 @@ export default function Campaign() {
   const completion = totalTarget ? Math.round((totalN / totalTarget) * 100) : 0;
 
   return (
-    <Shell active="campaigns" user={user}>
+    <Shell active="campaigns" user={user} campaignId={id}>
+      <CampaignWorkflow campaign={c} active="setup" />
       <div className="crumbs"><Link href="/campaigns">Campaigns</Link> / <b>{c.name}</b></div>
       <div className="pagehead">
         <div>

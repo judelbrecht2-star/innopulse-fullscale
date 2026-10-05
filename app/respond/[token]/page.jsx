@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Check } from "iconoir-react";
+import { restoreDraft, missingQuestions } from "../../lib/respondent-draft";
 
 export default function Respond() {
   const { token } = useParams();
@@ -19,6 +20,7 @@ export default function Respond() {
   const [segment, setSegment] = useState("");
   const [demo, setDemo] = useState({});
   const [thanks, setThanks] = useState(null);
+  const [draftSaved, setDraftSaved] = useState(false);
   const draftKey = "fs_draft_" + token;
   const doneKey = "fs_done_" + token;
   const saveTimer = useRef(null);
@@ -67,11 +69,15 @@ export default function Respond() {
           const raw = localStorage.getItem(draftKey);
           if (raw) {
             const d = JSON.parse(raw);
-            if (d && d.answers && Object.keys(d.answers).length > 0) {
-              setAnswers(d.answers || {});
-              setComments(d.comments || {});
+            const clean = restoreDraft(d, j);
+            if (Object.keys(clean.answers).length || Object.keys(clean.comments).length || Object.keys(clean.demo).length || clean.segment) {
+              setAnswers(clean.answers);
+              setComments(clean.comments);
+              setDemo(clean.demo);
+              setSegment(clean.segment);
               setConsent(true);
               setRestored(true);
+              setDraftSaved(true);
               setState("form");
               return;
             }
@@ -91,29 +97,33 @@ export default function Respond() {
     if (state !== "form") return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      try { localStorage.setItem(draftKey, JSON.stringify({ answers, comments, at: Date.now() })); } catch {}
+      try { localStorage.setItem(draftKey, JSON.stringify({ answers, comments, demo, segment, at: Date.now() })); setDraftSaved(true); }
+      catch { setDraftSaved(false); }
       beacon(Object.keys(answers).length, total, false);
     }, 400);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
-  }, [answers, comments, state, draftKey]);
+  }, [answers, comments, demo, segment, state, draftKey]);
 
   const total = useMemo(
     () => data ? data.questionnaire.pillars.reduce((s, p) => s + p.questions.length, 0) : 0,
     [data]
   );
-  const answered = Object.keys(answers).length;
+  const missing = data ? missingQuestions(data.questionnaire, answers) : [];
+  const answered = total - missing.length;
   const pct = total ? Math.round((answered / total) * 100) : 0;
 
   async function submit() {
-    if (answered < total) {
-      const firstMissing = data.questionnaire.pillars.flatMap((p) => p.questions).find((q) => !answers[q.key]);
+    if (state === "sending") return;
+    if (missing.length) {
+      const firstMissing = missing[0];
       if (firstMissing) {
         const el = document.getElementById("q_" + firstMissing.key);
-        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+        if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); el.querySelector("input")?.focus({ preventScroll: true }); }
       }
       setErr(`Please answer all questions — ${total - answered} remaining.`);
       return;
     }
+    try { localStorage.setItem(draftKey, JSON.stringify({ answers, comments, demo, segment, at: Date.now() })); setDraftSaved(true); } catch { setDraftSaved(false); }
     setErr(""); setState("sending");
     try {
       const r = await fetch(`${FN_BASE}/fs-respond`, {
@@ -122,10 +132,10 @@ export default function Respond() {
       });
       const j = await r.json();
       if (r.status === 409) {
-        // Server-side duplicate guard fired — treat as already submitted
-        try { localStorage.setItem(doneKey, "1"); localStorage.removeItem(draftKey); } catch {}
-        setThanks("You'd already submitted from this device — your earlier response is safely recorded.");
-        setState("done"); window.scrollTo({ top: 0 }); return;
+        // A used invitation and this device's duplicate are different cases.
+        // Preserve the draft until the server positively confirms success.
+        setErr((j.error || "This invitation has already been used.") + " We could not confirm this submission. Your answers remain on this page; contact the person who sent the link.");
+        setState("form"); return;
       }
       if (!r.ok) { setErr(j.error || "Could not submit."); setState("form"); return; }
       try { localStorage.setItem(doneKey, "1"); localStorage.removeItem(draftKey); } catch {}
@@ -133,7 +143,7 @@ export default function Respond() {
       setState("done");
       window.scrollTo({ top: 0 });
     } catch {
-      setErr("Network problem while submitting — your answers are still saved on this device. Please try again.");
+      setErr("Network problem while submitting — your answers are still on this page. Please try again before closing it.");
       setState("form");
     }
   }
@@ -145,6 +155,7 @@ export default function Respond() {
       <h1>Assessment unavailable</h1>
       <p>{err}</p>
       <p className="muted small">If you believe this is a mistake, contact the person who sent you the link.</p>
+      <Button variant="outline" onClick={() => window.location.reload()}>Try again</Button>
     </div></div>
   );
 
@@ -156,8 +167,8 @@ export default function Respond() {
         No name or email is stored with your answers. Reports and dashboards only ever show
         group results, and a group stays hidden until enough people have responded. Your
         individual answers and written comments are visible only to the organisation&apos;s
-        small assessment team for data-quality checks — never to your colleagues or managers
-        in any report.
+        assessment team for data-quality checks. Reports may include privacy-eligible
+        excerpts from written feedback. See the <a href="/privacy">privacy notice</a> for more detail.
       </p>
     </div></div>
   );
@@ -187,8 +198,8 @@ export default function Respond() {
           <b>Not applicable</b>. These are never counted against the organisation&apos;s score.
         </p>
         <p className="muted small">
-          Your progress saves automatically on this device — you can close the page and
-          pick up where you left off using the same link.
+          When browser storage is available, your progress saves on this device.
+          Check the saving status at the end of the form before closing this page.
         </p>
         <label className="qopt" style={{ marginTop: 16 }}>
           <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
@@ -212,7 +223,7 @@ export default function Respond() {
   // form
   return (
     <div className="rshell"><div style={{ maxWidth: 760, margin: "0 auto" }}>
-      <div className="progressbar">
+      <div className="progressbar" role="progressbar" aria-label="Assessment completion" aria-valuenow={answered} aria-valuemin={0} aria-valuemax={total}>
         <div className="track"><div className="fill" style={{ width: pct + "%" }} /></div>
         <div className="lab"><span>{answered} of {total} answered</span><span>{pct}%</span></div>
       </div>
@@ -231,15 +242,16 @@ export default function Respond() {
             <h2>A little context (all optional)</h2>
             <div className="small muted">
               Every question below is optional. Answers are used only for group-level analysis —
-              any grouping with too few people is automatically hidden, so you can never be
-              singled out.
+              results for groupings with too few people are hidden. Avoid sharing details
+              that could identify you or someone else in written feedback.
             </div>
           </div>
           <div className="qblock" style={{ display: "grid", gap: 14 }}>
             {data.campaign.demographics.map((dim) => (
               <div key={dim.id}>
-                <label className="f">{dim.question || dim.label}</label>
+                <label className="f" htmlFor={"demo_" + dim.id}>{dim.question || dim.label}</label>
                 <NativeSelect
+                  id={"demo_" + dim.id} disabled={state === "sending"}
                   value={demo[dim.id] || ""}
                   onChange={(e) => setDemo((d) => ({ ...d, [dim.id]: e.target.value }))}
                   style={{ maxWidth: 340 }}
@@ -254,7 +266,7 @@ export default function Respond() {
       ) : data.campaign?.segments?.length ? (
         <div className="qblock">
           <div className="qtext">Which area do you work in / deal with? <span className="muted">(optional — used only for group-level analysis, hidden below the anonymity threshold)</span></div>
-          <NativeSelect value={segment} onChange={(e) => setSegment(e.target.value)} style={{ maxWidth: 340 }}>
+          <NativeSelect aria-label="Area you work in or deal with" disabled={state === "sending"} value={segment} onChange={(e) => setSegment(e.target.value)} style={{ maxWidth: 340 }}>
             <NativeSelectOption value="">Prefer not to say</NativeSelectOption>
             {data.campaign.segments.map((sg) => <NativeSelectOption key={sg} value={sg}>{sg}</NativeSelectOption>)}
           </NativeSelect>
@@ -269,8 +281,8 @@ export default function Respond() {
             <div className="small muted">{p.desc}</div>
           </div>
           {p.questions.map((qq, qi) => (
-            <div className="qblock" key={qq.key} id={"q_" + qq.key}>
-              <div className="qtext">{qi + 1}. {qq.text}</div>
+            <fieldset className="qblock" key={qq.key} id={"q_" + qq.key} disabled={state === "sending"}>
+              <legend className="qtext">{qi + 1}. {qq.text}</legend>
               {q.scale.map((s) => (
                 <label key={s.code} className={"qopt" + (answers[qq.key] === s.code ? " sel" : "")}>
                   <input
@@ -281,11 +293,12 @@ export default function Respond() {
                   {s.label}
                 </label>
               ))}
-            </div>
+            </fieldset>
           ))}
           <div style={{ margin: "16px 0 8px" }}>
-            <label className="f">{p.commentPrompt} <span className="muted">(optional)</span></label>
+            <label className="f" htmlFor={"comment_" + p.id}>{p.commentPrompt} <span className="muted">(optional)</span></label>
             <Textarea
+              id={"comment_" + p.id} disabled={state === "sending"}
               value={comments[p.id] || ""}
               onChange={(e) => setComments((c) => ({ ...c, [p.id]: e.target.value }))}
               placeholder="Optional — your comments are anonymous."
@@ -294,13 +307,13 @@ export default function Respond() {
         </section>
       ))}
 
-      {err ? <div className="err">{err}</div> : null}
+      {err ? <div role="alert" className="err">{err}</div> : null}
       <div style={{ margin: "22px 0 40px" }}>
         <Button onClick={submit} disabled={state === "sending"}>
           {state === "sending" ? "Submitting…" : "Submit my responses"}
         </Button>
         <p className="small muted" style={{ marginTop: 8 }}>
-          Progress autosaves on this device until you submit.
+          {draftSaved ? "Progress saved on this device. You can return using the same link." : "Keep this page open until you submit. Saving on this device may be unavailable."}
         </p>
       </div>
     </div></div>

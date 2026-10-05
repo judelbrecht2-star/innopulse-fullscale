@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Check, WarningTriangle } from "iconoir-react";
 
 export default function SecuritySettings() {
-  const { user, role, orgSettings, loading, err } = useSettings();
+  const { user, role, orgSettings, loading, authErr, workspaceErr } = useSettings();
   const [pw1, setPw1] = useState("");
   const [pw2, setPw2] = useState("");
   const [pwState, savePw] = useSave();
@@ -36,7 +36,8 @@ export default function SecuritySettings() {
   useEffect(() => { if (user) loadFactors(); }, [user, loadFactors]);
 
   if (loading) return <LoadingCard rows={3} />;
-  if (err) return <ErrorNote>{err}</ErrorNote>;
+  if (authErr) return <ErrorNote>{authErr}</ErrorNote>;
+  if (!user) return <LoadingCard rows={3} />;
 
   const enabled = !!factors?.some((f) => f.status === "verified");
   const requiredRoles = orgSettings?.require_mfa_roles || [];
@@ -82,6 +83,7 @@ export default function SecuritySettings() {
 
   return (
     <SettingsPage title="Security" description="How you prove it's you.">
+      {workspaceErr ? <Alert><AlertDescription>{workspaceErr} You can still manage your password and two-factor authentication here.</AlertDescription></Alert> : null}
       <Section
         title="Two-factor authentication"
         description="A 6-digit code from an authenticator app, in addition to your password."

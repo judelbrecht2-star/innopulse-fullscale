@@ -1,0 +1,74 @@
+{
+  "project_ref": "jydbinexjckfzjqgsmjf",
+  "retrieved_date": "2026-10-05",
+  "scope": "Deployed baseline metadata, before local query-completeness fixes. Excludes unrelated attio-sync.",
+  "normalization": "Embedded NUL string delimiters were represented as escaped \\0 in fs-results and fs-responses-ops, preserving string semantics.",
+  "functions": [
+    {
+      "slug": "fs-admin",
+      "version": 9,
+      "verify_jwt": true,
+      "bundle_sha256": "7ae933d154fd7b987f06ca543fbfa24d0a4ae4e5ae6f9109e62cdc74f254273c",
+      "files": [
+        "index.ts"
+      ]
+    },
+    {
+      "slug": "fs-notify",
+      "version": 5,
+      "verify_jwt": true,
+      "bundle_sha256": "241387e13f689b41c82ffa8112acbde5368d653f235d32bd129fc60b284ea1b7",
+      "files": [
+        "index.ts"
+      ]
+    },
+    {
+      "slug": "fs-results",
+      "version": 16,
+      "verify_jwt": true,
+      "bundle_sha256": "7190ee15be10e6fe00f764395a0deb705aa2343da494eeecee60fecb292da4a1",
+      "files": [
+        "index.ts"
+      ]
+    },
+    {
+      "slug": "fs-responses-ops",
+      "version": 10,
+      "verify_jwt": true,
+      "bundle_sha256": "bce52556a2e5c6fb8738cb958a9b17045c6199c3f8f2aa3da7e72c0d24067926",
+      "files": [
+        "index.ts"
+      ]
+    },
+    {
+      "slug": "fs-respond",
+      "version": 13,
+      "verify_jwt": false,
+      "bundle_sha256": "4fb45091f914d099676955a262bf89fdd4b887c2a2c879563a0df3df23183678",
+      "files": [
+        "functions/fs-respond/index.ts",
+        "functions/_shared/comment-coding-shadow.ts"
+      ]
+    },
+    {
+      "slug": "fs-jev-findings",
+      "version": 5,
+      "verify_jwt": true,
+      "bundle_sha256": "62e9c170ee22ac95988935b00ffb02cfdbacfa87bdcbbe52644e4a1676486afe",
+      "files": [
+        "functions/fs-jev-findings/index.ts",
+        "functions/_shared/finding-corroboration-shadow.ts"
+      ]
+    },
+    {
+      "slug": "fs-jev-interventions",
+      "version": 2,
+      "verify_jwt": true,
+      "bundle_sha256": "60249fa66356c7c326a5126fafc57e7705fc9c1450d524a15768fd6cf2244b40",
+      "files": [
+        "functions/fs-jev-interventions/index.ts",
+        "functions/_shared/intervention-matching.ts"
+      ]
+    }
+  ]
+}

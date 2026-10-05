@@ -1,6 +1,9 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { activeMembership, switchOrg } from "./lib/org";
+import { campaignHref } from "./lib/campaign-context";
 import {
   Activity, Home, Rocket, ChatLines, StatsUpSquare, Page, Settings,
   ShieldCheck, Link as LinkIcon, LinkSlash, Group, User, ReportColumns, Community, Copy, QrCode,
@@ -78,16 +81,31 @@ const NAV = [
 ];
 
 /* ---------- App shell — shadcn/ui Sidebar, dark TGS treatment ---------- */
-export function Shell({ active, user, children }) {
+export function Shell({ active, user, campaignId = null, children }) {
   const router = useRouter();
+  const [membership, setMembership] = useState(null);
+  const [signingOut, setSigningOut] = useState(false);
+  const [shellError, setShellError] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    if (user) activeMembership(user.id).then((m) => { if (!cancelled) setMembership(m); })
+      .catch(() => { if (!cancelled) setShellError("Could not load organisation details. Please refresh."); });
+    return () => { cancelled = true; };
+  }, [user]);
   async function signOut(e) {
     e.preventDefault();
-    await sb().auth.signOut();
-    router.push("/login");
+    setSigningOut(true); setShellError("");
+    try {
+      const { error } = await sb().auth.signOut();
+      if (error) throw error;
+      router.replace("/login");
+    } catch { setShellError("Could not sign out. Check your connection and try again."); }
+    finally { setSigningOut(false); }
   }
 
   return (
     <SidebarProvider>
+      <a className="skip-link" href="#main-content">Skip to content</a>
       <Sidebar collapsible="icon">
         <SidebarHeader>
           <SidebarMenu>
@@ -113,7 +131,7 @@ export function Shell({ active, user, children }) {
               {NAV.map((n) => (
                 <SidebarMenuItem key={n.id}>
                   <SidebarMenuButton asChild isActive={active === n.id} tooltip={n.label}>
-                    <Link href={n.href}><n.Icon />{n.label}</Link>
+                    <Link href={["responses", "insights", "reports"].includes(n.id) ? campaignHref(n.href, campaignId) : n.href} aria-current={active === n.id ? "page" : undefined}><n.Icon />{n.label}</Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
@@ -125,8 +143,8 @@ export function Shell({ active, user, children }) {
           <SidebarMenu>
             {user ? (
               <SidebarMenuItem>
-                <SidebarMenuButton onClick={signOut} tooltip="Sign out">
-                  <LogOut />Sign out
+                <SidebarMenuButton onClick={signOut} disabled={signingOut} tooltip="Sign out">
+                  <LogOut />{signingOut ? "Signing out…" : "Sign out"}
                 </SidebarMenuButton>
               </SidebarMenuItem>
             ) : null}
@@ -145,8 +163,16 @@ export function Shell({ active, user, children }) {
           <span className="text-sm font-medium text-muted-foreground">
             {NAV.find((n) => n.id === active)?.label || "InnoPulse Full-Scale"}
           </span>
+          {membership ? <div className="ml-auto min-w-0">
+            {membership.memberships.length > 1 ? <select aria-label="Active organisation" className="org-switcher"
+              value={membership.org_id} onChange={(e) => switchOrg(e.target.value)}>
+              {membership.memberships.map((m) => <option key={m.org_id} value={m.org_id}>{m.fs_orgs.name}</option>)}
+            </select> : <span className="text-sm text-muted-foreground truncate">{membership.fs_orgs.name}</span>}
+          </div> : null}
         </header>
-        <main className="main flex-1 p-6">{children}</main>
+        <main id="main-content" tabIndex={-1} className="main flex-1 p-6">
+          {shellError ? <div role="alert" className="err">{shellError}</div> : null}{children}
+        </main>
       </SidebarInset>
     </SidebarProvider>
   );

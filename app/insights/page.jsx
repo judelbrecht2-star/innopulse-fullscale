@@ -14,6 +14,13 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { ArrowRight, Lock, WarningTriangle } from "iconoir-react";
 import { Download } from "iconoir-react";
 
+function hiddenScoreLabel(cell, threshold) {
+  if (Number(cell.n) >= Number(threshold) || (cell.suppression_reason && cell.suppression_reason !== "below_threshold")) {
+    return "Hidden to prevent protected results from being inferred from other scores.";
+  }
+  return `Hidden until at least ${threshold} responses (privacy protection).`;
+}
+
 function FindingCard({ f }) {
   const chip = f.klass === CLASS.OBS ? "teal" : f.klass === CLASS.SUP ? "draft" : "closed";
   const dot = f.severity === 3 ? "var(--primary)" : f.severity === 2 ? "var(--amber, #b7791f)" : "var(--muted)";
@@ -36,8 +43,16 @@ function FindingCard({ f }) {
 
 function bandChip(v) { return v == null ? "" : v < 40 ? "low" : v < 70 ? "med" : "high"; }
 
+import { listOrgCampaigns } from "../lib/campaign-data";
+import { defaultCampaign, requestedCampaignId, setCampaignUrl, campaignHref } from "../lib/campaign-context";
+
+import CampaignWorkflow from "../components/campaign-workflow";
+
+import DataState from "../components/data-state";
+
 export default function Insights() {
   const router = useRouter();
+  const [initialLoading, setInitialLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [campaigns, setCampaigns] = useState([]);
   const [sel, setSel] = useState("");
@@ -51,19 +66,22 @@ export default function Insights() {
 
   useEffect(() => {
     (async () => {
+      try {
       const { data: u } = await sb().auth.getUser();
       if (!u.user) { router.replace("/login"); return; }
       setUser(u.user);
-      const { data: cs } = await sb().from("fs_campaigns")
-        .select("id, name, status, created_at, prior_campaign_id").order("created_at", { ascending: false });
+      const { campaigns: cs } = await listOrgCampaigns(u.user.id, "id, name, status, created_at, prior_campaign_id, is_sandbox");
       setCampaigns(cs || []);
-      const target = (cs || []).find((c) => c.status === "open") || (cs || [])[0];
+      const target = defaultCampaign(cs, requestedCampaignId());
       if (target) setSel(target.id);
+      } catch (ex) { setErr(ex.message || "Could not load your workspace. Please try again."); }
+      finally { setInitialLoading(false); }
     })();
   }, [router]);
 
   const [trend, setTrend] = useState(null);
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       setTrend(null);
       const cur = campaigns.find((c) => c.id === sel);
@@ -71,26 +89,28 @@ export default function Insights() {
       try {
         const { data: sess } = await sb().auth.getSession();
         const r = await fetch(`${FN_BASE}/fs-results?campaign_id=${cur.prior_campaign_id}`, { headers: { Authorization: `Bearer ${sess.session?.access_token}` } });
-        if (r.ok) setTrend(computeTrend(results, await r.json()));
+        if (r.ok) { const prior = await r.json(); if (!cancelled) setTrend(computeTrend(results, prior)); }
       } catch { /* trend is best-effort */ }
     })();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [results, sel]);
 
-  const loadResults = useCallback(async (cid) => {
+  const loadResults = useCallback(async (cid, signal) => {
     if (!cid) return;
     setResults(null); setErr("");
     const { data: sess } = await sb().auth.getSession();
     const jwt = sess.session?.access_token;
-    if (!jwt) return;
+    if (!jwt) { setErr("Your session expired. Sign in again to view results."); return; }
     try {
-      const r = await fetch(`${FN_BASE}/fs-results?campaign_id=${cid}&detail=1`, { headers: { Authorization: `Bearer ${jwt}` } });
+      const r = await fetch(`${FN_BASE}/fs-results?campaign_id=${cid}&detail=1`, { signal, headers: { Authorization: `Bearer ${jwt}` } });
       if (!r.ok) { setErr("Could not load results for this campaign."); return; }
-      setResults(await r.json());
-    } catch { setErr("Could not load results for this campaign."); }
+      const data = await r.json();
+      if (!signal?.aborted) setResults(data);
+    } catch { if (!signal?.aborted) setErr("Could not load results for this campaign."); }
   }, []);
 
-  useEffect(() => { loadResults(sel); }, [sel, loadResults]);
+  useEffect(() => { const controller = new AbortController(); loadResults(sel, controller.signal); return () => controller.abort(); }, [sel, loadResults]);
 
   const pillars = results?.pillars || [];
   const groups = results?.groups || [];
@@ -139,8 +159,11 @@ export default function Insights() {
   const smallSample = A && B && (A.n < MIN_N || B.n < MIN_N);
   const findings = results ? evaluateFindings(results) : [];
 
+  if (initialLoading || err || !campaigns.length || (sel && !results)) return <Shell active="insights" user={user} campaignId={sel}><DataState loading={initialLoading || (Boolean(sel) && !results && !err)} error={err} empty={!campaigns.length} retry={() => window.location.reload()} /></Shell>;
+
   return (
-    <Shell active="insights" user={user}>
+    <Shell active="insights" user={user} campaignId={sel}>
+      <CampaignWorkflow campaign={campaigns.find((c) => c.id === sel)} active="insights" />
       <div className="crumbs">Insights / <b>{campaigns.find((c) => c.id === sel)?.name || "—"}</b></div>
       <div className="pagehead">
         <div>
@@ -149,8 +172,8 @@ export default function Insights() {
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           {sel ? <Link className="btn btn-ghost" href={`/campaigns/${sel}/report`}><Download className="inline size-4 -mt-0.5" /> Export report</Link> : null}
-          {sel ? <Link className="btn btn-primary" href="/insights/interventions">Recommended interventions <ArrowRight className="inline size-4 -mt-0.5" /></Link> : null}
-          <NativeSelect value={sel} onChange={(e) => setSel(e.target.value)} style={{ width: "auto", fontWeight: 600 }}>
+          {sel ? <Link className="btn btn-primary" href={campaignHref("/insights/interventions", sel)}>Recommended interventions <ArrowRight className="inline size-4 -mt-0.5" /></Link> : null}
+          <NativeSelect aria-label="Campaign" value={sel} onChange={(e) => { setCampaignUrl(e.target.value); setSel(e.target.value); }} style={{ width: "auto", fontWeight: 600 }}>
             {campaigns.map((c) => <NativeSelectOption key={c.id} value={c.id}>{c.name}</NativeSelectOption>)}
           </NativeSelect>
         </div>
@@ -199,7 +222,7 @@ export default function Insights() {
         <div className="card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
             <h2 style={{ margin: 0 }}>Automatic findings</h2>
-            <Link className="btn btn-primary btn-sm" href="/insights/findings">Review all {findings.length} findings <ArrowRight className="inline size-4 -mt-0.5" /></Link>
+            <Link className="btn btn-primary btn-sm" href={campaignHref("/insights/findings", sel)}>Review all {findings.length} findings <ArrowRight className="inline size-4 -mt-0.5" /></Link>
           </div>
           <TagGlossary />
           {findings.slice(0, 3).map((f) => <FindingCard key={f.id} f={f} />)}
@@ -321,7 +344,7 @@ export default function Insights() {
                   <TableCell>{o.n}</TableCell>
                   {o.suppressed ? (
                     <TableCell colSpan={pillars.length + 1}>
-                      <div className="lockrow"><Lock className="inline size-4 -mt-0.5" /> Hidden until at least {results?.campaign?.anonymity_threshold} responses</div>
+                      <div className="lockrow"><Lock className="inline size-4 -mt-0.5" /> {hiddenScoreLabel(o, results?.campaign?.anonymity_threshold)}</div>
                     </TableCell>
                   ) : (
                     <>
@@ -394,13 +417,14 @@ export default function Insights() {
             {groups.map((g) => {
               const meta = GROUP_META[g.type] || { label: g.type, chip: "c-grey", icon: "people" };
               const Icon = I[meta.icon] || I.people;
-              return (
+
+  return (
                 <TableRow key={g.id}>
                   <TableCell><div className="gname"><span className={"chip " + meta.chip} style={{ width: 36, height: 36, flex: "0 0 36px" }}><Icon style={{ width: 17, height: 17 }} /></span><b>{groupName(g)}</b></div></TableCell>
                   <TableCell>{g.n}</TableCell>
                   {g.suppressed ? (
                     <TableCell colSpan={pillars.length + 1}>
-                      <div className="lockrow"><Lock className="inline size-4 -mt-0.5" /> Hidden until at least {results?.campaign?.anonymity_threshold} response{results?.campaign?.anonymity_threshold === 1 ? "" : "s"} (privacy protection)</div>
+                      <div className="lockrow"><Lock className="inline size-4 -mt-0.5" /> {hiddenScoreLabel(g, results?.campaign?.anonymity_threshold)}</div>
                     </TableCell>
                   ) : (
                     <>
