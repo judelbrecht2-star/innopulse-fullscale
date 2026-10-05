@@ -98,19 +98,15 @@ export default function Reports() {
 
   async function saveContent() {
     setBusy(true); setSaved(false); setErr("");
-    const { error: e1 } = await sb().from("fs_campaigns").update({
-      client_context: content.client_context.trim() || null,
-      engagement_objective: content.engagement_objective.trim() || null,
-    }).eq("id", genFor);
-    let e2 = null;
-    for (const [pid] of PILLARS) {
-      const body = (notes[pid] || "").trim();
-      const { error } = await sb().from("fs_pillar_notes").upsert(
-        { campaign_id: genFor, pillar: pid, body, updated_at: new Date().toISOString() },
-        { onConflict: "campaign_id,pillar" });
-      if (error) e2 = error;
-    }
-    if (e1 || e2) setErr((e1 || e2).message); else { setSaved(true); setTimeout(() => setSaved(false), 2000); }
+    try {
+      const { error } = await sb().rpc("fs_save_report_content", {
+        p_campaign: genFor, p_context: content.client_context.trim(),
+        p_objective: content.engagement_objective.trim(), p_notes: notes,
+      });
+      if (error) throw error;
+      setSaved(true);
+      setCamps(cs => cs.map(c => c.id === genFor ? { ...c, ...content } : c));
+    } catch (ex) { setErr(ex.message || "Your report content could not be saved. Keep a copy and try again."); }
     setBusy(false);
   }
 

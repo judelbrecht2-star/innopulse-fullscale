@@ -208,7 +208,7 @@ export default function FindingsWorkbench() {
     if ((reviews[f.id]?.[field] || null) === v) return;
     setSaveError("");
     try {
-    const { error } = await sb().from("fs_finding_reviews").update({ [field]: v }).eq("campaign_id", sel).eq("rule_id", f.id);
+    const { error } = await sb().from("fs_finding_reviews").update({ [field]: v }).eq("campaign_id", sel).eq("rule_id", f.id).select("id").single();
     if (error) throw error;
     setReviews((rv) => ({ ...rv, [f.id]: { ...rv[f.id], [field]: v } }));
     } catch (ex) { setSaveError("This note could not be saved. Keep a copy and try again. " + (ex.message || "")); }
