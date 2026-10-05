@@ -1,4 +1,5 @@
 import "./globals.css";
+import "./completion.css";
 import { Inter, Fraunces } from "next/font/google";
 
 // Self-hosted via next/font (CSP-safe): Inter for UI, Fraunces for display headings.
@@ -16,7 +17,7 @@ const fraunces = Fraunces({
 
 export const metadata = {
   title: "InnoPulse Full-Scale — The Growth System",
-  description: "Corporate innovation-diagnostic platform (preview build)",
+  description: "Understand innovation capability, review evidence and turn insight into action.",
   robots: { index: false, follow: false },
 };
 

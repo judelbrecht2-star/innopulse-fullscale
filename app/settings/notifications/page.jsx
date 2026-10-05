@@ -1,77 +1,15 @@
 "use client";
-/* Notifications — read-only for now, on purpose.
-   fs-notify v1 sends reminders on demand from the Responses console; there is
-   no preferences table behind this screen yet, so there is nothing here to
-   save. Rather than render controls that silently do nothing, the page states
-   what actually happens today and what is missing. */
-import Link from "next/link";
-import { useSettings } from "../context";
-import { ErrorNote, LoadingCard, Note, Row, Section, SettingsPage } from "../parts";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-
-export default function NotificationSettings() {
-  const { org, orgSettings, loading, err } = useSettings();
-
-  if (loading) return <LoadingCard rows={3} />;
-  if (err) return <ErrorNote>{err}</ErrorNote>;
-
-  return (
-    <SettingsPage
-      title="Notifications"
-      description="What this platform emails, and to whom."
-    >
-      <Note>
-        There are no preferences to set yet — no notification is sent on a schedule or a trigger.
-        Everything below is sent only when a person clicks send. Preferences will appear here once
-        there is something to prefer.
-      </Note>
-
-      <Section title="What is sent today">
-        <Row label="Respondent reminders" hint="Sent from the Responses console, to addresses you paste in at that moment. The addresses are used for the send and are not stored against any answer.">
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary" data-tone="open">On demand</Badge>
-            <Button asChild variant="ghost" size="sm"><Link href="/responses">Open Responses</Link></Button>
-          </div>
-        </Row>
-        <Row label="Team invitations" hint="Sent when an owner invites a teammate who does not yet have an account.">
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary" data-tone="open">On demand</Badge>
-            <Button asChild variant="ghost" size="sm"><Link href="/settings/team">Open Team</Link></Button>
-          </div>
-        </Row>
-        <Row label="Password reset" hint="Sent by Supabase Auth when someone asks to reset their password.">
-          <Badge variant="secondary" data-tone="open">Automatic</Badge>
-        </Row>
-      </Section>
-
-      <Section title="Not sent yet" description="Named here so nobody assumes otherwise.">
-        <ul className="list-disc pl-5 text-sm text-muted-foreground">
-          <li>No campaign-closing reminder to the programme owner.</li>
-          <li>No alert when a group crosses its anonymity threshold and results unlock.</li>
-          <li>No digest of new responses.</li>
-          <li>No notification when a report is generated or approved.</li>
-        </ul>
-      </Section>
-
-      <Section title="Where mail comes from">
-        <Row label="Sender" hint="Reminder emails are sent through Resend by the fs-notify function.">
-          <span className="text-sm">Resend · fs-notify</span>
-        </Row>
-        <Row label="Reply-to" hint="Set the support address under Organisation so respondents can reach a human.">
-          {orgSettings?.support_email
-            ? <Badge variant="outline" data-tone="draft">{orgSettings.support_email}</Badge>
-            : (
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" data-tone="closed">not set</Badge>
-                <Button asChild variant="ghost" size="sm"><Link href="/settings/organization">Set it</Link></Button>
-              </div>
-            )}
-        </Row>
-        <Row label="Organisation">
-          <span className="text-sm">{org?.name || "—"}</span>
-        </Row>
-      </Section>
-    </SettingsPage>
-  );
+import {useEffect,useState} from 'react';
+import Link from 'next/link';
+import {sb} from '../../../lib/supabase';
+import {useSettings} from '../context';
+import {ErrorNote,LoadingCard,Row,Section,SettingsPage} from '../parts';
+import {Button} from '@/components/ui/button';
+const options=[['actions','Action due dates','Due and overdue alerts for actions assigned to you.'],['reports','Report decisions','New versions, approval requests, changes requested and issued reports.'],['closing','Collection closing','An update when an open assessment is within three days of closing.'],['results','Results available','An update when an assessment has enough responses to unlock a group’s results.'],['weekly','Weekly workspace review','One inbox reminder each week to review your assessments and actions.']];
+export default function NotificationSettings(){
+ const {org,user,loading,err}=useSettings();const [prefs,setPrefs]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[saved,setSaved]=useState(false);
+ useEffect(()=>{if(!org || !user)return;let alive=true;setPrefs(null);(async()=>{try{const r=await sb().from('fs_notification_preferences').select('*').eq('org_id',org.id).eq('user_id',user.id).maybeSingle();if(r.error)throw r.error;if(alive)setPrefs(r.data || Object.fromEntries(options.map(([k])=>[k,true])));}catch(ex){if(alive)setError(ex.message);}})();return()=>{alive=false;};},[org,user]);
+ async function save(){setBusy(true);setError('');setSaved(false);try{const r=await sb().from('fs_notification_preferences').upsert({org_id:org.id,user_id:user.id,...Object.fromEntries(options.map(([k])=>[k,!!prefs[k]]))},{onConflict:'user_id,org_id'}).select('*').single();if(r.error)throw r.error;setPrefs(r.data);setSaved(true);}catch(ex){setError(ex.message || 'Could not save preferences.');}finally{setBusy(false);}}
+ if(loading)return <LoadingCard rows={4}/>;if(err || error&&!prefs)return <ErrorNote>{err || error}</ErrorNote>;if(!prefs)return <LoadingCard rows={4}/>;
+ return <SettingsPage title="Notifications" description="Choose which updates appear in your workspace inbox."><Section title="Your inbox" description="These preferences apply only to you in this workspace. Report updates arrive when decisions happen; due dates and milestones refresh when you open Overview or Inbox.">{options.map(([key,label,hint])=><Row key={key} label={label} hint={hint} htmlFor={`notify-${key}`}><input id={`notify-${key}`} type="checkbox" checked={!!prefs[key]} disabled={busy} onChange={e=>{setPrefs(p=>({...p,[key]:e.target.checked}));setSaved(false);}}/></Row>)}<div className="guide-controls"><Button disabled={busy} onClick={save}>{busy?'Saving…':'Save preferences'}</Button>{saved&&<span role="status">Preferences saved</span>}<Link href="/notifications">Open inbox →</Link></div>{error&&<ErrorNote>{error}</ErrorNote>}</Section><Section title="Email" description="Inbox updates do not send email. Respondent reminders and team invitations are sent when a person chooses to send them; password recovery is handled by your sign-in provider."><p className="small muted">No scheduled campaign or task email is enabled. Your inbox remains available whenever you sign in.</p></Section></SettingsPage>;
 }

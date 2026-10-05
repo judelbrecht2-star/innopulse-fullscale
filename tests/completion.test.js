@@ -1,0 +1,7 @@
+import {describe,it,expect} from 'vitest';
+import {acceptedFindings,actionBucket,todayInZone,safeBranding,canApprove} from '../app/lib/completion';
+describe('Completed workflows',()=>{
+ it('keeps rejected and unreviewed findings out of new reports and preserves evidence when edited',()=>{const findings=['a','b','c','d'].map(id=>({id,title:id,text:'original',evidence:['source']}));const rows=[{rule_id:'a',decision:'accepted'},{rule_id:'b',decision:'rejected'},{rule_id:'c',decision:'edited',edited_title:'Reviewed title',edited_text:'Qualified conclusion'}];const result=acceptedFindings(findings,rows);expect(result.map(r=>r.id)).toEqual(['a','c']);expect(result[1]).toMatchObject({title:'Reviewed title',text:'Qualified conclusion',evidence:['source']});});
+ it('uses workspace dates across the UTC midnight boundary',()=>{expect(todayInZone('Africa/Johannesburg',new Date('2026-10-04T23:30:00Z'))).toBe('2026-10-05');expect(actionBucket({status:'done',due_on:'2026-10-01'},'2026-10-05')).toBe('done');expect(actionBucket({status:'in_progress',due_on:'2026-10-04'},'2026-10-05')).toBe('overdue');});
+ it('restricts approval and rejects executable or remote branding',()=>{expect(canApprove('analyst')).toBe(false);expect(canApprove('manager')).toBe(true);expect(safeBranding({logo:'data:image/svg+xml;base64,abcd',accent:'url(https://example.com)'})).toMatchObject({logo:'',accent:'#c74b42'});expect(safeBranding({logo:'https://example.com/logo.png'}).logo).toBe('');});
+});

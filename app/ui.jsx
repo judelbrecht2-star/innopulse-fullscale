@@ -10,6 +10,7 @@ import {
   InfoCircle, Plus, LogOut,
 } from "iconoir-react";
 import { sb } from "../lib/supabase";
+import { ListTodo, Bell } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarHeader, SidebarInset,
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger,
@@ -76,7 +77,9 @@ const NAV = [
   { id: "campaigns", label: "Campaigns", href: "/campaigns", Icon: Rocket },
   { id: "responses", label: "Responses", href: "/responses", Icon: ChatLines },
   { id: "insights", label: "Insights", href: "/insights", Icon: StatsUpSquare },
+  { id: "actions", label: "My actions", href: "/actions", Icon: ListTodo },
   { id: "reports", label: "Reports", href: "/reports", Icon: Page },
+  { id: "notifications", label: "Inbox", href: "/notifications", Icon: Bell },
   { id: "settings", label: "Settings", href: "/settings/profile", Icon: Settings },
 ];
 

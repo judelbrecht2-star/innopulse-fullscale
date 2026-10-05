@@ -11,6 +11,8 @@ import { ArrowRight, GraphUp, Group, ShieldCheck, WarningTriangle } from "iconoi
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
+import NextSteps from "../components/next-steps";
+
 const BARRIER = { sii: "Confusion", iem: "Resistance", oic: "Anxiety", ipm: "Frustration", roi: "False Starts" };
 
 import { listOrgCampaigns } from "../lib/campaign-data";
@@ -73,6 +75,7 @@ export default function Dashboard() {
             </div>
           </div>
           {err ? <div className="err">{err}</div> : null}
+          {!err && org ? <NextSteps user={user} org={org} role={role} campaigns={campaigns} /> : null}
           {!err ? <ExecOverview data={overview} campaigns={campaigns} canManage={role === "owner" || role === "manager"} /> : null}
         </>
       )}

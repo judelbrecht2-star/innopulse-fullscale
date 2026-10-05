@@ -11,6 +11,7 @@ import { useSettings } from "../context";
 import { ErrorNote, LoadingCard, ReadOnlyNotice, Row, SaveBar, Section, SettingsPage, useSave } from "../parts";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { safeBranding } from "../../lib/completion";
 
 const SIZES = ["1-10", "11-50", "51-200", "201-1000", "1000+"];
 const COUNTRIES = [
@@ -43,6 +44,7 @@ export default function OrganizationSettings() {
       locale: orgSettings.locale || "en-ZA",
       support_email: orgSettings.support_email || "",
       privacy_contact_email: orgSettings.privacy_contact_email || "",
+      branding: safeBranding(orgSettings.branding),
     });
   }, [org, orgSettings]);
 
@@ -68,6 +70,7 @@ export default function OrganizationSettings() {
       country: f.country, timezone: f.timezone, locale: f.locale,
       support_email: f.support_email.trim() || null,
       privacy_contact_email: f.privacy_contact_email.trim() || null,
+      branding: safeBranding(f.branding),
     }).eq("org_id", org.id);
     if (e2) throw e2;
 
@@ -81,12 +84,28 @@ export default function OrganizationSettings() {
 
   const ro = !isOwner;
 
+  async function chooseLogo(e) {
+    const file=e.target.files?.[0]; if(!file)return;
+    await save(async()=>{
+      if(!['image/png','image/jpeg'].includes(file.type) || file.size>300000)throw new Error('Choose a PNG or JPEG logo under 300 KB.');
+      const logo=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('Could not read the logo.'));reader.readAsDataURL(file);});
+      const image=new Image();image.src=logo;await image.decode();
+      setF(p=>({...p,branding:{...p.branding,logo}}));
+    });
+  }
+
   return (
     <SettingsPage
       title="Organisation"
       description="How this organisation is identified across the platform and in generated reports."
     >
       {ro ? <ReadOnlyNotice /> : null}
+
+      <Section title="Client report branding" description="Branding is saved into each new report version. Existing approved reports keep their original appearance." footer={ro ? null : <SaveBar onSave={onSave} state={state} />}>
+        <Row label="Report accent" htmlFor="report-accent"><Input id="report-accent" type="color" value={f.branding.accent} disabled={ro} onChange={e=>setF(p=>({...p,branding:{...p.branding,accent:e.target.value}}))} className="max-w-sm" /></Row>
+        <Row label="Report footer" htmlFor="report-footer"><Input id="report-footer" maxLength={200} value={f.branding.footer} disabled={ro} placeholder="InnoPulse · The Growth System" onChange={e=>setF(p=>({...p,branding:{...p.branding,footer:e.target.value}}))} className="max-w-sm" /></Row>
+        <Row label="Organisation logo" htmlFor="report-logo" hint="PNG or JPEG, up to 300 KB. Save after selecting the image."><div><Input id="report-logo" type="file" accept="image/png,image/jpeg" disabled={ro} onChange={chooseLogo}/>{f.branding.logo&&<><img src={f.branding.logo} alt="Report logo preview" className="report-logo"/><button type="button" disabled={ro} onClick={()=>setF(p=>({...p,branding:{...p.branding,logo:''}}))}>Remove logo</button></>}</div></Row>
+      </Section>
 
       <Section
         title="Identity"
