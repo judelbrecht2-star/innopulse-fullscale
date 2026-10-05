@@ -121,11 +121,6 @@ export default function Reports() {
     return r.json();
   }
 
-  async function sha256(s) {
-    const h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
-    return Array.from(new Uint8Array(h), (b) => b.toString(16).padStart(2, "0")).join("");
-  }
-
   // Gate 1: generation freezes a snapshot. Downloads render from the snapshot,
   // never from live data — two downloads of the same version are byte-identical.
   async function generate(rtype) {
@@ -149,12 +144,11 @@ export default function Reports() {
         opsCall("report_comments"),
         opsCall("theme_summary"),
         sb().from("fs_interventions").select("*"),
-        sb().from("fs_actions").select("*").eq("campaign_id", genFor).order("id"),
+        campaignRows("fs_actions", "*", [selectedCampaign]).then(data => ({ data })),
         sb().from("fs_org_settings").select("branding").eq("org_id", orgId).maybeSingle(),
       ]);
       if (reviewRows.error || noteRows.error || interventionRows.error || actionRows.error || brandingRows.error) throw reviewRows.error || noteRows.error || interventionRows.error || actionRows.error || brandingRows.error;
       const revs = reviewRows.data, pn = noteRows.data;
-      const revMap = Object.fromEntries((revs || []).map((x) => [x.rule_id, x]));
       const findings = acceptedFindings(evaluateFindings(d), revs || []);
       const cRow = camps.find((x) => x.id === genFor);
       // Step 5: cycle-over-cycle trend, frozen into the snapshot
@@ -182,14 +176,10 @@ export default function Reports() {
         comment_themes: th.themes || [],
         comment_meta: { commenters: th.commenters ?? null, respondents: th.respondents ?? null },
       };
-      const body = JSON.stringify(snapshot);
-      const checksum = await sha256(body);
-      const prior = reports.filter((r) => r.campaign_id === genFor && r.rtype === rtype);
-      const version = prior.length ? Math.max(...prior.map((r) => r.version || 1)) + 1 : 1;
-      const title = `${campName(genFor)} — ${TYPES[rtype].label} report v${version}`;
+      // The database allocates the version, authorship and checksum atomically.
       const { data: ins, error } = await sb().from("fs_reports").insert({
-        campaign_id: genFor, title, rtype, created_by: user.id,
-        snapshot, version, checksum, questionnaire_version: d.questionnaire_version || null,
+        campaign_id: genFor, rtype, snapshot,
+        questionnaire_version: d.questionnaire_version || null,
       }).select("*").single();
       if (error) throw new Error(error.message);
       await load();

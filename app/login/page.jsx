@@ -124,7 +124,7 @@ export default function Login() {
             setMfa(null); setCode(""); setPassword(""); setErr("");
           }}>Use a different account</Button>}
         </div>
-        <p className="footer" style={{ marginTop: 14 }}>InnoPulse Full-Scale · preview build · The Growth System</p>
+        <p className="footer" style={{ marginTop: 14 }}>InnoPulse Full-Scale · The Growth System</p>
       </div>
     </main>
   );

@@ -1,15 +1,202 @@
 "use client";
-import {useEffect,useState} from 'react';
-import Link from 'next/link';
-import {sb} from '../../lib/supabase';
-import {campaignRows} from '../lib/campaign-data';
-import {actionBucket,todayInZone,canEdit} from '../lib/completion';
-export default function NextSteps({user,org,role,campaigns}){
- const [state,setState]=useState({loading:true,error:'',actions:[],reports:[],unread:0,zone:'Africa/Johannesburg'});
- useEffect(()=>{if(!user || !org)return;let alive=true;setState(p=>({...p,loading:true}));(async()=>{try{const refresh=await sb().rpc('fs_refresh_notifications',{p_org:org.id});if(refresh.error)throw refresh.error;const [actions,reports,inbox,settings]=await Promise.all([campaignRows('fs_actions','id,campaign_id,assigned_to,status,due_on,title',campaigns),campaignRows('fs_reports','id,campaign_id,approval_state',campaigns),sb().from('fs_notifications').select('id',{count:'exact',head:true}).eq('user_id',user.id).eq('org_id',org.id).is('read_at',null),sb().from('fs_org_settings').select('timezone').eq('org_id',org.id).maybeSingle()]);if(inbox.error || settings.error)throw inbox.error || settings.error;if(alive)setState({loading:false,error:'',actions,reports,unread:inbox.count || 0,zone:settings.data?.timezone || 'Africa/Johannesburg'});}catch(ex){if(alive)setState(p=>({...p,loading:false,error:ex.message || 'Could not load your next steps.'}));}})();return()=>{alive=false;};},[user,org,campaigns]);
- if(state.loading)return <div className="card" role="status">Finding your next steps…</div>;
- if(state.error)return <div className="err" role="alert">{state.error}</div>;
- const today=todayInZone(state.zone),mine=state.actions.filter(a=>a.assigned_to===user.id&&a.status!=='done'),overdue=mine.filter(a=>actionBucket(a,today)==='overdue').length,pending=state.reports.filter(r=>r.approval_state==='pending').length,draft=campaigns.find(c=>c.status==='draft'),open=campaigns.find(c=>c.status==='open'&&!c.is_sandbox),closed=campaigns.find(c=>c.status==='closed'&&!c.is_sandbox&&!state.reports.some(r=>r.campaign_id===c.id));
- const steps=[...(overdue?[{title:`${overdue} overdue action${overdue===1?'':'s'}`,text:'Update your progress and agree on the next due date.',href:'/actions'}]:[]),...(pending&&canEdit(role)?[{title:`${pending} report${pending===1?'':'s'} awaiting approval`,text:'Review the saved version before it reaches your client.',href:'/reports'}]:[]),...(draft&&['owner','manager'].includes(role)?[{title:'Finish your assessment setup',text:draft.name,href:`/campaigns/${draft.id}`}]:[]),...(open&&canEdit(role)?[{title:'Keep collection moving',text:open.name,href:`/responses?campaign=${open.id}`}]:[]),...(closed&&canEdit(role)?[{title:'Review findings and prepare a report',text:closed.name,href:`/insights/findings?campaign=${closed.id}`}]:[])].slice(0,3);
- return <section className="card next-steps"><div className="pagehead"><div><p className="eyebrow">YOUR WORKSPACE TODAY</p><h2>What needs your attention</h2></div><Link href="/notifications">Inbox · {state.unread} unread</Link></div><div className="next-step-grid">{steps.length?steps.map(s=><Link className="next-step" key={s.href} href={s.href}><h3>{s.title}</h3><p>{s.text}</p><span>Continue →</span></Link>):<div className="next-step"><h3>{campaigns.length?'You’re up to date':'Ready for your first assessment'}</h3><p>{campaigns.length?'Review your results, plan your next actions, or start another cycle.':'Define your objective and invite the stakeholders who matter.'}</p><Link href={['owner','manager'].includes(role)?'/campaigns/new':'/reports'}>{['owner','manager'].includes(role)?'Start an assessment →':'View approved reports →'}</Link></div>}<Link className="next-step" href="/actions"><h3>{mine.length} action{mine.length===1?'':'s'} assigned to you</h3><p>See your due dates, update progress and keep your team informed.</p><span>My actions →</span></Link></div></section>;
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { sb } from "../../lib/supabase";
+import { campaignRows } from "../lib/campaign-data";
+import { actionBucket, todayInZone, canEdit } from "../lib/completion";
+export default function NextSteps({ user, org, role, campaigns }) {
+  const [state, setState] = useState({
+    loading: true,
+    error: "",
+    actions: [],
+    reports: [],
+    unread: 0,
+    zone: "Africa/Johannesburg",
+  });
+  useEffect(() => {
+    if (!user || !org) return;
+    let alive = true;
+    setState((p) => ({ ...p, loading: true }));
+    (async () => {
+      try {
+        const refresh = await sb().rpc("fs_refresh_notifications", {
+          p_org: org.id,
+        });
+        if (refresh.error) throw refresh.error;
+        const [actions, reports, inbox, settings] = await Promise.all([
+          campaignRows(
+            "fs_actions",
+            "id,campaign_id,assigned_to,status,due_on,title",
+            campaigns,
+          ),
+          campaignRows(
+            "fs_reports",
+            "id,campaign_id,approval_state",
+            campaigns,
+          ),
+          sb()
+            .from("fs_notifications")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", user.id)
+            .eq("org_id", org.id)
+            .is("read_at", null),
+          sb()
+            .from("fs_org_settings")
+            .select("timezone")
+            .eq("org_id", org.id)
+            .maybeSingle(),
+        ]);
+        if (inbox.error || settings.error) throw inbox.error || settings.error;
+        if (alive)
+          setState({
+            loading: false,
+            error: "",
+            actions,
+            reports,
+            unread: inbox.count || 0,
+            zone: settings.data?.timezone || "Africa/Johannesburg",
+          });
+      } catch (ex) {
+        if (alive)
+          setState((p) => ({
+            ...p,
+            loading: false,
+            error: ex.message || "Could not load your next steps.",
+          }));
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [user, org, campaigns]);
+  if (state.loading)
+    return (
+      <div className="card" role="status">
+        Finding your next steps…
+      </div>
+    );
+  if (state.error)
+    return (
+      <div className="err" role="alert">
+        {state.error}
+      </div>
+    );
+  const today = todayInZone(state.zone),
+    mine = state.actions.filter(
+      (a) => a.assigned_to === user.id && a.status !== "done",
+    ),
+    overdue = mine.filter((a) => actionBucket(a, today) === "overdue").length,
+    pending = state.reports.filter(
+      (r) => r.approval_state === "pending",
+    ).length,
+    draft = campaigns.find((c) => c.status === "draft"),
+    open = campaigns.find((c) => c.status === "open" && !c.is_sandbox),
+    closed = campaigns.find(
+      (c) =>
+        c.status === "closed" &&
+        !c.is_sandbox &&
+        !state.reports.some((r) => r.campaign_id === c.id),
+    );
+  const steps = [
+    ...(overdue
+      ? [
+          {
+            title: `${overdue} overdue action${overdue === 1 ? "" : "s"}`,
+            text: "Update your progress and agree on the next due date.",
+            href: "/actions",
+          },
+        ]
+      : []),
+    ...(pending && canEdit(role)
+      ? [
+          {
+            title: `${pending} report${pending === 1 ? "" : "s"} awaiting approval`,
+            text: "Review the saved version before it reaches your client.",
+            href: "/reports",
+          },
+        ]
+      : []),
+    ...(draft && ["owner", "manager"].includes(role)
+      ? [
+          {
+            title: "Finish your assessment setup",
+            text: draft.name,
+            href: `/campaigns/${draft.id}`,
+          },
+        ]
+      : []),
+    ...(open && canEdit(role)
+      ? [
+          {
+            title: "Keep collection moving",
+            text: open.name,
+            href: `/responses?campaign=${open.id}`,
+          },
+        ]
+      : []),
+    ...(closed && canEdit(role)
+      ? [
+          {
+            title: "Review findings and prepare a report",
+            text: closed.name,
+            href: `/insights/findings?campaign=${closed.id}`,
+          },
+        ]
+      : []),
+  ].slice(0, 3);
+  return (
+    <section className="card next-steps">
+      <div className="pagehead">
+        <div>
+          <p className="eyebrow">YOUR WORKSPACE TODAY</p>
+          <h2>What needs your attention</h2>
+        </div>
+        <Link href="/notifications">Inbox · {state.unread} unread</Link>
+      </div>
+      <div className="next-step-grid">
+        {steps.length ? (
+          steps.map((s) => (
+            <Link className="next-step" key={s.href} href={s.href}>
+              <h3>{s.title}</h3>
+              <p>{s.text}</p>
+              <span>Continue →</span>
+            </Link>
+          ))
+        ) : (
+          <div className="next-step">
+            <h3>
+              {campaigns.length
+                ? "You’re up to date"
+                : "Ready for your first assessment"}
+            </h3>
+            <p>
+              {campaigns.length
+                ? "Review your results, plan your next actions, or start another cycle."
+                : "Define your objective and invite the stakeholders who matter."}
+            </p>
+            <Link
+              href={
+                ["owner", "manager"].includes(role)
+                  ? "/campaigns/new"
+                  : "/reports"
+              }
+            >
+              {["owner", "manager"].includes(role)
+                ? "Start an assessment →"
+                : "View approved reports →"}
+            </Link>
+          </div>
+        )}
+        <Link className="next-step" href="/actions">
+          <h3>
+            {mine.length} action{mine.length === 1 ? "" : "s"} assigned to you
+          </h3>
+          <p>
+            See your due dates, update progress and keep your team informed.
+          </p>
+          <span>My actions →</span>
+        </Link>
+      </div>
+    </section>
+  );
 }

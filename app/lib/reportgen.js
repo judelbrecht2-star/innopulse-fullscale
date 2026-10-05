@@ -7,7 +7,7 @@ import {
 } from "docx";
 import { bestGaps, MIN_N } from "./gaps";
 import { donutChart, distBarChart, pillarDistribution } from "./charts";
-import { safeBranding } from "./completion";
+import { safeBranding, REPORT_STATES } from "./completion";
 
 const INK = "17171A", CORAL = "E8332E", TEAL = "0E8C8C", GREY = "6D6D76", LINE = "D9D9DE", AMBER = "B7791F", GREEN = "2F855A";
 const GROUP_LBL = { executive: "Executives", employee: "Employees", customer: "Customers", partner: "Partners", other: "Other" };
@@ -139,6 +139,7 @@ export async function generateWordReport(rep, interps) {
   b.push(new Paragraph({ spacing: { after: 60 }, children: [new TextRun({ text: "Corporate Innovation Diagnostic", bold: true, color: INK, size: 56 })] }));
   b.push(P("A multi-stakeholder assessment of perceived innovation capability, alignment and experience.", { s: 23, c: "44444a", after: 140, i: true }));
   b.push(P(`${s.org?.name || ""} — ${s.campaign?.name || ""}`, { s: 28, c: "44444a", after: 260 }));
+  b.push(P(`${REPORT_STATES[rep.approval_state] || "Legacy version"}${["approved","issued"].includes(rep.approval_state) ? " · Approved content" : " · Internal review"}`, { b: true, c: GREY, s: 20 }));
   b.push(P(`Report version v${rep.version} · generated ${new Date(s.generated_at).toLocaleDateString()} · snapshot ${String(rep.checksum || "").slice(0, 12)}`, { c: GREY, s: 20 }));
   b.push(P(`Questionnaire ${rep.questionnaire_version ? "v" + rep.questionnaire_version : ""} · findings rulebook ${s.rulebook} · anonymity threshold ${s.campaign?.anonymity_threshold}`, { c: GREY, s: 20 }));
   b.push(P("Assessment type: Diagnostic — survey (perception) evidence only. It reports how stakeholders experience the innovation system; it is not an audit and does not certify conformity with any standard. A Verified Innovation Audit — adding interviews, documents and operational records — is available as a follow-on engagement.", { c: GREY, s: 19 }));
